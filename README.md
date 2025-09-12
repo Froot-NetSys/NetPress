@@ -23,9 +23,13 @@ conda env create -f environment_mininet.yml
 conda env create -f environment_ai_gym.yml
 ```
 
-2. Activate the appropriate:
+2. Activate the appropriate environment:
 ```bash
+# MALT
 conda activate ai_gym_env
+
+# Routing or K8s
+conda activate mininet
 ```
 3. Some local models (e.g. `Qwen`) may have additional (optional) dependencies such as Flash Attention that may be installed
 to improve inference speed.
