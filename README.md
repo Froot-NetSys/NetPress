@@ -19,14 +19,20 @@ NetPress: Dynamically Generated LLM Benchmarks for Network Applications. *arXiv 
 # Create Mininet environment (for Route and K8s applications)
 conda env create -f environment_mininet.yml
 
-# Create AI Gym environment (for Malt application)
+# Create AI Gym environment (for MALT application)
 conda env create -f environment_ai_gym.yml
 ```
 
-2. Activate the AI Gym environment and install additional dependencies:
+2. Activate the appropriate:
 ```bash
 conda activate ai_gym_env
-pip install -r ai_gym_requirement.txt
+```
+3. Some local models (e.g. `Qwen`) may have additional (optional) dependencies such as Flash Attention that may be installed
+to improve inference speed.
+
+```bash
+conda activate ai_gym_env
+pip install flash-attn==2.7.4.post1
 ```
 
 ## Quick Start

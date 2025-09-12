@@ -20,7 +20,7 @@ from vllm import LLM, SamplingParams
 os.environ["LANGCHAIN_TRACING_V2"] = "false"
 # For Azure OpenAI GPT4
 from azure.identity import DefaultAzureCredential
-from langchain.chat_models import AzureChatOpenAI
+from langchain_openai import AzureChatOpenAI
 import getpass
 # ReAct agent
 from langchain import hub

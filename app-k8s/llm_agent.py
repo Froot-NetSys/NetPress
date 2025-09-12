@@ -18,7 +18,7 @@ load_dotenv()
 huggingface_token = os.getenv("HUGGINGFACE_TOKEN")
 login(token=huggingface_token)
 from azure.identity import DefaultAzureCredential
-from langchain.chat_models import AzureChatOpenAI
+from langchain_openai import AzureChatOpenAI
 import getpass
 # ReAct agent
 from langchain import hub
