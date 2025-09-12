@@ -1,0 +1,7 @@
+**/*.md
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+Dockerfile
+.git
+.gitignore

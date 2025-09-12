@@ -19,13 +19,11 @@ from langchain.chains import LLMChain
 import warnings
 from langchain._api import LangChainDeprecationWarning
 warnings.simplefilter("ignore", category=LangChainDeprecationWarning)
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 from huggingface_hub import login
 from vllm import LLM, SamplingParams
 from prompt_agent import BasePromptAgent, ZeroShot_CoT_PromptAgent, FewShot_Basic_PromptAgent, FewShot_Semantic_PromptAgent, ReAct_PromptAgent
-from modelscope import AutoModelForCausalLM, AutoTokenizer
-from modelscope import GenerationConfig
 import torch.multiprocessing as mp
 
 # Load environ variables from .env, will not override existing environ variables
@@ -34,8 +32,8 @@ huggingface_token = os.getenv("HUGGINGFACE_TOKEN")
 login(token=huggingface_token)
 # For Azure OpenAI GPT4
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-from langchain.chat_models import AzureChatOpenAI
-from langchain.chat_models import ChatGoogleGenerativeAI
+from langchain_openai import AzureChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 import getpass
 
 mp.set_start_method('spawn', force=True)
