@@ -67,6 +67,11 @@ RUN mv skaffold /usr/local/bin
 RUN echo "#!/bin/bash\n\$@" > /usr/bin/sudo
 RUN chmod +x /usr/bin/sudo
 
+# Fetch Microservices repository and specify platform in loadgenerator Dockerfile.
+RUN apt-get install -y git
+RUN git clone https://github.com/GoogleCloudPlatform/microservices-demo.git
+RUN sed -i 's|$BUILDPLATFORM|linux/amd64|g' microservices-demo/src/loadgenerator/Dockerfile
+
 # Clean up apt cache to reduce image size.
 RUN rm -rf /var/lib/apt/lists/*
 
