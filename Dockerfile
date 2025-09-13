@@ -12,14 +12,15 @@ RUN rm /miniconda3/miniconda.sh
 ENV PATH="/miniconda3/bin:${PATH}"
 
 WORKDIR /NetPress
-COPY --chown=user . .
 
 # Build dependencies.
 RUN apt-get install -y build-essential
 
 # Create conda environments.
 RUN conda tos accept
+COPY --chown=user environment_ai_gym.yml .
 RUN conda env create -f environment_ai_gym.yml
+COPY --chown=user environment_mininet.yml .
 RUN conda env create -f environment_mininet.yml
 
 # Install Flash Attention separately since it requires PyTorch at build time...
@@ -31,5 +32,7 @@ RUN echo "#!/bin/bash\n\$@" > /usr/bin/sudo
 RUN chmod +x /usr/bin/sudo
 
 RUN rm -rf /var/lib/apt/lists/*
+
+COPY --chown=user . .
 
 CMD ["/bin/bash"]
