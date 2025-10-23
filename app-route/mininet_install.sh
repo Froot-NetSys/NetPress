@@ -1,7 +1,7 @@
 #!/bin/bash
 cd ..
 # Clone Mininet repository
-git clone git://github.com/mininet/mininet
+git clone https://github.com/mininet/mininet
 
 # Navigate to the Mininet directory
 cd mininet

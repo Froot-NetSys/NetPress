@@ -19,14 +19,46 @@ NetPress: Dynamically Generated LLM Benchmarks for Network Applications. *arXiv 
 # Create Mininet environment (for Route and K8s applications)
 conda env create -f environment_mininet.yml
 
-# Create AI Gym environment (for Malt application)
+# Create AI Gym environment (for MALT application)
 conda env create -f environment_ai_gym.yml
 ```
 
-2. Activate the AI Gym environment and install additional dependencies:
+2. Activate the appropriate environment:
+```bash
+# MALT
+conda activate ai_gym_env
+
+# Routing or K8s
+conda activate mininet
+```
+3. Some local models (e.g. `Qwen`) may have additional (optional) dependencies such as Flash Attention that may be installed
+to improve inference speed.
+
 ```bash
 conda activate ai_gym_env
-pip install -r ai_gym_requirement.txt
+pip install flash-attn==2.7.4.post1
+```
+
+## Running From Docker
+
+A Dockerfile is provided with all dependencies installed/configured. Note that to use GPUs for local models, you will need to install [**NVIDIA Container Toolkit**](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+```bash
+# Build image.
+cd /path/to/NetPress
+docker build -t netpress:latest .
+
+# Run. Optional --gpus flag to expose NVIDIA GPUs within container.
+docker run -itd --name netpress_test --gpus all netpress:latest
+
+# Enter container.
+docker exec -it netpress_test /bin/bash
+```
+
+For the Kubernetes app, you will have to expose the docker socket, and run the container on the host network so that the app can deploy and interact with the KIND cluster.
+```bash
+# Expose docker socket and run on localhost.
+docker run -itd --name netpress_test --network host --gpus all \
+    -v /var/run/docker.sock:/var/run/docker.sock netpress:latest \
 ```
 
 ## Quick Start
@@ -43,9 +75,9 @@ cd experiments
 
 For comprehensive testing instructions, please refer to the following guides:
 
-- [Capacity Planning (CP) Application Guide](./app-malt/README.md)
-- [Routing Application Guide](./app-route/README.md)
-- [Kubernetes (K8s) Application Guide](./app-k8s/README.md)
+- [**Capacity Planning (CP) Application Guide**](./app-malt/README.md)
+- [**Routing Application Guide**](./app-route/README.md)
+- [**Kubernetes (K8s) Application Guide**](./app-k8s/README.md)
 
 ## Results Analysis
 
