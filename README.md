@@ -8,6 +8,14 @@ The research behind NetPress is detailed in our paper:
 Zhou, Y., Ruan, J., Wang, E. S., Fouladi, S., Yan, F. Y., Hsieh, K., & Liu, Z. (2025). 
 NetPress: Dynamically Generated LLM Benchmarks for Network Applications. *arXiv preprint arXiv:2506.03231*. [[paper]](https://arxiv.org/abs/2506.03231)
 
+```bibtex
+@article{zhou2025netpress,
+  title={NetPress: Dynamically Generated LLM Benchmarks for Network Applications},
+  author={Zhou, Yajie and Ruan, Jiajun and Wang, Eric S and Fouladi, Sadjad and Yan, Francis Y and Hsieh, Kevin and Liu, Zaoxing},
+  journal={arXiv preprint arXiv:2506.03231},
+  year={2025}
+}
+
 ## Prerequisites
 - Conda package manager
 - Python environment
@@ -96,16 +104,6 @@ Our evaluation framework measures three key dimensions:
 
 ## Contributing
 Guide for adding new network applications coming soon.
-
-## Citation
-Please cite the following paper if you use this code:
-``bibtex
-@article{zhou2025netpress,
-  title={NetPress: Dynamically Generated LLM Benchmarks for Network Applications},
-  author={Zhou, Yajie and Ruan, Jiajun and Wang, Eric S and Fouladi, Sadjad and Yan, Francis Y and Hsieh, Kevin and Liu, Zaoxing},
-  journal={arXiv preprint arXiv:2506.03231},
-  year={2025}
-}
 
 ## Contact
 For questions or support, please:
