@@ -97,6 +97,16 @@ Our evaluation framework measures three key dimensions:
 ## Contributing
 Guide for adding new network applications coming soon.
 
+## Citation
+Please cite the following paper if you use this code:
+``bibtex
+@article{zhou2025netpress,
+  title={NetPress: Dynamically Generated LLM Benchmarks for Network Applications},
+  author={Zhou, Yajie and Ruan, Jiajun and Wang, Eric S and Fouladi, Sadjad and Yan, Francis Y and Hsieh, Kevin and Liu, Zaoxing},
+  journal={arXiv preprint arXiv:2506.03231},
+  year={2025}
+}
+
 ## Contact
 For questions or support, please:
 - Open an issue on GitHub
