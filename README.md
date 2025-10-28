@@ -15,6 +15,7 @@ NetPress: Dynamically Generated LLM Benchmarks for Network Applications. *arXiv 
   journal={arXiv preprint arXiv:2506.03231},
   year={2025}
 }
+```
 
 ## Prerequisites
 - Conda package manager
