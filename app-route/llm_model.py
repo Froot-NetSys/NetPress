@@ -429,12 +429,12 @@ class GPTAgentModel:
         """Generate a response based on the log content and file content."""
         with open(file_path, 'r') as f:
             file_content = f.read()
-        connectivitity_status = file_content + log_content
+        connectivity_status = file_content + log_content
 
         # content = response.choices[0].message.content
         max_length = 127000  
-        if len(connectivitity_status) > max_length:
-            connectivity_status = connectivitity_status[:max_length]
+        if len(connectivity_status) > max_length:
+            connectivity_status = connectivity_status[:max_length]
 
         # Create prompt based on type
         if self.prompt_type == "few_shot_semantic":
@@ -457,7 +457,7 @@ class GPTAgentModel:
             )
             input_data = {"input": connectivity_status}
         start_time = time.time()
-        chain = LLMChain(llm=self.client, prompt=prompt)
+        chain = LLMChain(llm=self.llm, prompt=prompt)
         content = chain.run(input_data)
         print(f'\n**BEGIN (RAW) LLM OUTPUT**\n{"=" * 50}\n{content}\n{"=" * 50}\n**END (RAW) LLM OUTPUT**\n')
         # Read LLM output
