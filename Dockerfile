@@ -27,9 +27,16 @@ RUN conda env create -f environment_mininet.yml
 RUN conda init --all
 RUN conda run -n ai_gym_env pip install flash-attn==2.7.4.post1
 
-# Make sudo dummy replacement, so we don't weaken docker security. Mininet (app-route) uses sudo as well.
-RUN echo "#!/bin/bash\n\$@" > /usr/bin/sudo
-RUN chmod +x /usr/bin/sudo
+# Make sudo dummy replacement that handles env vars properly.
+RUN echo '#!/bin/bash\n\
+if [ "$1" = "-E" ]; then shift; fi\n\
+while [[ "$1" == *=* ]]; do export "$1"; shift; done\n\
+"$@"' > /usr/bin/sudo && chmod +x /usr/bin/sudo
+
+# Install Mininet and dependencies.
+RUN apt-get update && apt-get install -y lsb-release git
+RUN git clone https://github.com/mininet/mininet /opt/mininet
+RUN cd /opt/mininet/util && DEBIAN_FRONTEND=noninteractive ./install.sh -a
 
 # Kubenertes CLI.
 RUN apt-get install -y curl ca-certificates gnupg2
@@ -63,10 +70,6 @@ RUN curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/v2.15.0/s
 RUN chmod +x skaffold
 RUN mv skaffold /usr/local/bin
 
-# Make sudo dummy replacement, so we don't weaken docker security. Mininet (app-route) uses sudo as well.
-RUN echo "#!/bin/bash\n\$@" > /usr/bin/sudo
-RUN chmod +x /usr/bin/sudo
-
 # Fetch Microservices repository and specify platform in loadgenerator Dockerfile.
 RUN apt-get install -y git
 RUN git clone https://github.com/GoogleCloudPlatform/microservices-demo.git
@@ -77,4 +80,12 @@ RUN rm -rf /var/lib/apt/lists/*
 
 COPY --chown=user . .
 
+# Create entrypoint script to start services on container startup
+RUN echo '#!/bin/bash\n\
+# Start Open vSwitch (required for Mininet)\n\
+service openvswitch-switch start 2>/dev/null || true\n\
+# Execute the command passed to docker run\n\
+exec "$@"' > /entrypoint.sh && chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["/bin/bash"]

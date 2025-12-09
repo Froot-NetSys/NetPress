@@ -412,7 +412,16 @@ def process_single_error(router, subnets, errortype, errordetail, unique_id):
 
 
 # Generate a configuration file with a specified number of queries for each error type
-def generate_config(filename='advanced_error_config.json', num_errors_per_type=20):
+def generate_config(filename='advanced_error_config.json', num_errors_per_type=20, num_switches=2, num_hosts_per_subnet=1):
+    """
+    Generate benchmark configuration file.
+    
+    Args:
+        filename: Output file path
+        num_errors_per_type: Number of queries per error type
+        num_switches: Number of switches in the topology (default: 2)
+        num_hosts_per_subnet: Number of hosts per subnet (default: 1)
+    """
     queries = []
     error_types = [
         'disable_routing',
@@ -425,8 +434,6 @@ def generate_config(filename='advanced_error_config.json', num_errors_per_type=2
     # Generate queries for each error type with different methods
     for et in error_types:
         for _ in range(num_errors_per_type):
-            num_hosts_per_subnet = random.randint(2, 4)
-            num_switches = random.randint(2, 4)
             detail = get_detail(et, num_switches)
             query = {
                 "num_switches": num_switches,
@@ -437,11 +444,9 @@ def generate_config(filename='advanced_error_config.json', num_errors_per_type=2
             }
             queries.append(query)
     
-    # Generate combined queries
+    # Generate combined queries (2 errors at once)
     for et1, et2 in combinations(error_types, 2):
         for _ in range(num_errors_per_type):
-            num_hosts_per_subnet = random.randint(2, 4)
-            num_switches = random.randint(2, 4)
             detail1 = get_detail(et1, num_switches)
             detail2 = get_detail(et2, num_switches)
             query = {

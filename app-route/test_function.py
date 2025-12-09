@@ -37,10 +37,17 @@ def static_benchmark_run_modify(args):
     os.makedirs(args.root_dir, exist_ok=True)
 
     # Generate or load the error configuration file
-    file_path = args.benchmark_path
-    if args.static_benchmark_generation == 1 and args.parallel == 0:
-        generate_config(file_path, num_errors_per_type=args.num_queries)
-        print(f"Process {unique_id}: Using error configuration file: {file_path}")
+    # If benchmark_path is relative, make it relative to root_dir
+    if not os.path.isabs(args.benchmark_path):
+        file_path = os.path.join(args.root_dir, args.benchmark_path)
+    else:
+        file_path = args.benchmark_path
+    
+    # Generate config if requested OR if the file doesn't exist
+    if args.static_benchmark_generation == 1 or (args.parallel == 0 and not os.path.exists(file_path)):
+        generate_config(file_path, num_errors_per_type=args.num_queries, 
+                       num_switches=args.num_switches, num_hosts_per_subnet=args.num_hosts_per_subnet)
+        print(f"Process {unique_id}: Generated error configuration file: {file_path}")
     print(f"Process {unique_id}: Running benchmark with prompt type {args.prompt_type}")
     print(file_path)
     # Load the error configuration
@@ -71,6 +78,9 @@ def static_benchmark_run_modify(args):
         errornumber = query.get("errornumber")
 
         print(f"Process {unique_id}: Initializing Mininet instance")
+        print(f"  -> Topology: {num_switches} switches, {num_hosts_per_subnet} hosts/subnet")
+        print(f"  -> Error type: {errortype}")
+        import sys; sys.stdout.flush()  # Force output
         start_time = datetime.now()
 
         # Initialize the network
@@ -78,18 +88,26 @@ def static_benchmark_run_modify(args):
 
         end_time = datetime.now()
         print(f"Process {unique_id}: Network initialization took {end_time - start_time}")
+        print(f"Process {unique_id}: Subnets created: {[s[2] for s in subnets]}")
+        sys.stdout.flush()
 
         # Inject errors into the network
+        print(f"Process {unique_id}: Injecting errors into network...")
+        sys.stdout.flush()
         if errornumber == 1:
-            print(f"Process {unique_id}: Injecting single error")
+            print(f"Process {unique_id}: Injecting single error: {errortype}")
             process_single_error(router, subnets, errortype, errordetail, unique_id)
+            print(f"Process {unique_id}: Error injected successfully")
         else:
             if isinstance(errortype, list) and isinstance(errordetail, list) and len(errortype) == errornumber and len(errordetail) == errornumber:
                 for et, ed in zip(errortype, errordetail):
+                    print(f"Process {unique_id}: Injecting error: {et}")
                     process_single_error(router, subnets, et, ed, unique_id)
+                print(f"Process {unique_id}: All errors injected successfully")
             else:
                 print(f"Process {unique_id}: Error: For multiple error injection, errortype and errordetail must be lists of length equal to errornumber")
                 continue
+        sys.stdout.flush()
         # CLI(net)   
         if isinstance(errortype, list):
             errortype = '+'.join(errortype)  
@@ -104,6 +122,8 @@ def static_benchmark_run_modify(args):
         initialize_json_file(json_path)
 
         # LLM interacts with Mininet
+        print(f"Process {unique_id}: Starting LLM interaction loop (max {args.max_iteration} iterations)")
+        sys.stdout.flush()
         iter = 0
         while iter < args.max_iteration:
             # Execute LLM command
@@ -127,8 +147,11 @@ def static_benchmark_run_modify(args):
 
             # Ping all hosts in the network
             start_time = datetime.now()
+            print(f"Process {unique_id}: Iteration {iter} - Running pingAll test...")
+            sys.stdout.flush()
             try:
                 pingall, loss_percent = parallelPing(net, timeout=0.1)
+                print(f"Process {unique_id}: PingAll completed - Loss: {loss_percent}%")
             except Exception as e:
                 print(f"Process {unique_id}: Error during pingAll: {e}")
                 if e == "Command execution timed out":
@@ -203,8 +226,10 @@ def run_benchmark_parallel(args):
     # Update the root directory in args
     args.root_dir = save_result_path
     args.llm_agent_type = "GPT-Agent"
-    # Generate the error configuration file
-    generate_config(os.path.join(save_result_path, "error_config.json"), num_errors_per_type=args.num_queries)
+    # Generate the error configuration file and update benchmark_path
+    args.benchmark_path = os.path.join(save_result_path, "error_config.json")
+    generate_config(args.benchmark_path, num_errors_per_type=args.num_queries,
+                   num_switches=args.num_switches, num_hosts_per_subnet=args.num_hosts_per_subnet)
 
     # Define a wrapper function to run static benchmarks
     def run_static_benchmark(prompt_type, static_benchmark_generation,llm_agent_type):
@@ -228,10 +253,6 @@ def run_benchmark_parallel(args):
         process = Process(target=run_static_benchmark, args=(prompt_type, args.static_benchmark_generation, args.llm_agent_type))
         processes.append(process)
         process.start()
-
-    process = Process(target=run_static_benchmark, args=("cot", args.static_benchmark_generation,"Qwen/Qwen2.5-72B-Instruct"))
-    processes.append(process)
-    process.start()
 
     # Wait for all processes to complete
     for process in processes:

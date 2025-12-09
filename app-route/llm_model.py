@@ -8,12 +8,7 @@ warnings.simplefilter("ignore", category=LangChainDeprecationWarning)
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain 
 from dotenv import load_dotenv
-import os
 from huggingface_hub import login
-load_dotenv()
-huggingface_token = os.getenv("HUGGINGFACE_TOKEN")
-# Login Hugging Face
-login(token=huggingface_token)
 from prompt_agent import BasePromptAgent, ZeroShot_CoT_PromptAgent, FewShot_Basic_PromptAgent, ReAct_PromptAgent
 from datetime import datetime
 from vllm import LLM, SamplingParams
@@ -27,6 +22,17 @@ from langchain import hub
 from langchain.agents import Tool, AgentExecutor, create_react_agent
 from langchain_community.tools import DuckDuckGoSearchRun
 from langchain_experimental.tools.python.tool import PythonAstREPLTool
+
+# Load environ variables from .env, will not override existing environ variables
+load_dotenv()
+
+def login_huggingface():
+    """Login to Huggingface Hub. Only needed for local LLMs."""
+    huggingface_token = os.getenv("HUGGINGFACE_TOKEN")
+    if huggingface_token:
+        login(token=huggingface_token)
+    else:
+        print("Warning: HUGGINGFACE_TOKEN not found. You may need to set it for downloading gated models.")
 
 class LLMModel:
     """
@@ -153,6 +159,7 @@ class QwenModel:
     """
 
     def __init__(self, model_name, max_new_tokens, temperature, device, prompt_type="base"):
+        login_huggingface()  # Login to Huggingface for local LLM
         self.model_name = "Qwen/Qwen2.5-72B-Instruct"
         self.max_new_tokens = max_new_tokens
         self.temperature = temperature
@@ -271,6 +278,7 @@ class Qwen_vllm_Model:
     """
 
     def __init__(self, model_name, max_new_tokens, temperature, device="cuda", prompt_type="base", num_gpus=1):
+        login_huggingface()  # Login to Huggingface for local LLM
         self.model_name = model_name
         self.max_new_tokens = max_new_tokens
         self.temperature = temperature
@@ -379,18 +387,36 @@ class GPTAgentModel:
     api_key : str
         The API key for GPT Agent.
     """
+    DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
 
-    def __init__(self, prompt_type="base"):
+    def __init__(self, prompt_type="base", config_path=None):
         self.prompt_type = prompt_type
+        self.config = self.load_config(config_path or self.DEFAULT_CONFIG_PATH)
         self._load_model()
+
+    @staticmethod
+    def load_config(config_path):
+        """Load configuration from a JSON file."""
+        if os.path.exists(config_path):
+            print(f"Loading config from: {config_path}")
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+            return config.get("language_model", {})
+        else:
+            print(f"Config file not found at {config_path}, using environment variables/prompts")
+            return {}
 
     def _load_model(self):
         """Initialize the GPT Agent client."""
         self.configure_environment_variables()
+        
+        # Get temperature setting from config (default to 0.0 if not supported)
+        temperature = 0.0 if not self.config.get("supports_temperature", True) else 0.0
+        
         self.llm = AzureChatOpenAI(
             openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],
             deployment_name=os.environ["AZURE_OPENAI_DEPLOYMENT_NAME"],
-            temperature=0.0,
+            temperature=temperature,
             max_tokens=4000,
         )
         if self.prompt_type == "base":
@@ -404,26 +430,47 @@ class GPTAgentModel:
             self.prompt_agent = FewShot_Basic_PromptAgent()
         print("======GPT-4o successfully loaded=======")
 
-    @staticmethod
     def configure_environment_variables(self):
-        """Authenticates with Azure OpenAI and sets environment variables if not already set."""
-        # Set the API_KEY to the token from the Azure credential
-        if "AZURE_OPENAI_API_KEY" not in os.environ:
-            try:
-                credential = DefaultAzureCredential()
-                os.environ["AZURE_OPENAI_API_KEY"] = credential.get_token("https://cognitiveservices.azure.com/.default").token
-            except Exception as e:
-                print("Error retrieving Azure OpenAI API key (authenticating with Entra ID failed):", e)
-                os.environ["AZURE_OPENAI_API_KEY"] = getpass.getpass("Please enter your Azure OpenAI API key: ")
-        # Get the endpoint of deployed AzureGPT model.
+        """Sets environment variables from config file, falling back to Azure credential or user prompt."""
+        DEFAULT_AZURE_OPENAI_API_VERSION = "2024-10-01"
+
+        # Set endpoint from config or prompt
         if "AZURE_OPENAI_ENDPOINT" not in os.environ:
-            os.environ["AZURE_OPENAI_ENDPOINT"] = getpass.getpass("Please enter your Azure OpenAI endpoint: ")
-        # Get the deployment name
+            if "model_endpoint" in self.config:
+                os.environ["AZURE_OPENAI_ENDPOINT"] = self.config["model_endpoint"]
+            else:
+                os.environ["AZURE_OPENAI_ENDPOINT"] = getpass.getpass("Please enter your Azure OpenAI endpoint: ")
+
+        # Set deployment name from config or prompt
         if "AZURE_OPENAI_DEPLOYMENT_NAME" not in os.environ:
-            os.environ["AZURE_OPENAI_DEPLOYMENT_NAME"] = getpass.getpass("Please enter your Azure OpenAI deployment name: ")
-        # Get the OpenAI API version
+            if "deployment_name" in self.config:
+                os.environ["AZURE_OPENAI_DEPLOYMENT_NAME"] = self.config["deployment_name"]
+            else:
+                os.environ["AZURE_OPENAI_DEPLOYMENT_NAME"] = getpass.getpass("Please enter your Azure OpenAI deployment name: ")
+
+        # Set API version from config or default
         if "AZURE_OPENAI_API_VERSION" not in os.environ:
-            os.environ["AZURE_OPENAI_API_VERSION"] = self.DEFAULT_AZURE_OPENAI_API_VERSION
+            os.environ["AZURE_OPENAI_API_VERSION"] = self.config.get("api_version", DEFAULT_AZURE_OPENAI_API_VERSION)
+
+        # Set API key - check env var, then config file, then Azure credential, then prompt
+        if "AZURE_OPENAI_API_KEY" not in os.environ:
+            # First check if api_key is in config file
+            if "api_key" in self.config and self.config["api_key"] and self.config["api_key"] != "YOUR_API_KEY_HERE":
+                os.environ["AZURE_OPENAI_API_KEY"] = self.config["api_key"]
+                print("Using API key from config file")
+            # Check if user wants to use Azure credential (explicit flag or no api_key)
+            elif self.config.get("use_azure_credential", False):
+                scope = self.config.get("scope", "https://cognitiveservices.azure.com/.default")
+                try:
+                    credential = DefaultAzureCredential()
+                    os.environ["AZURE_OPENAI_API_KEY"] = credential.get_token(scope).token
+                    print("Successfully authenticated with Azure credential")
+                except Exception as e:
+                    print(f"Azure credential authentication failed: {e}")
+                    os.environ["AZURE_OPENAI_API_KEY"] = getpass.getpass("Please enter your Azure OpenAI API key: ")
+            else:
+                # No api_key in config and not using Azure credential - prompt user
+                os.environ["AZURE_OPENAI_API_KEY"] = getpass.getpass("Please enter your Azure OpenAI API key: ")
 
     def predict(self, log_content, file_path, json_path, **kwargs):
         """Generate a response based on the log content and file content."""
@@ -484,8 +531,12 @@ class GPTAgentModel:
         return machine, commands
 
 class ReAct_Agent:
-    def __init__(self, prompt_type="react"):
-        GPTAgentModel.configure_environment_variables()
+    def __init__(self, prompt_type="react", config_path=None):
+        # Use GPTAgentModel to load config and set environment variables
+        gpt_agent = GPTAgentModel.__new__(GPTAgentModel)
+        gpt_agent.config = GPTAgentModel.load_config(config_path or GPTAgentModel.DEFAULT_CONFIG_PATH)
+        gpt_agent.configure_environment_variables()
+        
         self.llm = AzureChatOpenAI(
             openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],
             deployment_name=os.environ["AZURE_OPENAI_DEPLOYMENT_NAME"],

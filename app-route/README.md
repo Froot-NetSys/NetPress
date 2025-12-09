@@ -15,8 +15,8 @@ conda activate mininet
 To install the Mininet emulator, run the following command (we tested on Ubuntu 22.04):
 
 ```
-chmod +x install_mininet.sh
-./install_mininet.sh
+chmod +x mininet_install.sh
+./mininet_install.sh
 ```
 
 If you see `Enjoy Mininet`, you install mininet environment successfully!
@@ -29,14 +29,38 @@ export HUGGINGFACE_TOKEN="your_huggingface_token"
 Information on how to get an acess token can be found on [here](https://huggingface.co/docs/hub/en/security-tokens).
 
 ### Azure GPT Usage
-If you want to use Azure GPT on a Azure VM, you will need to create a `GPT-4o` deployment on Azure AI. If you haven't done so already, you can follow the instructions at the Azure GPT [quickstart](https://learn.microsoft.com/en-us/azure/ai-services/openai/chatgpt-quickstart?tabs=keyless%2Ctypescript-keyless%2Cpython-new%2Cbash&pivots=programming-language-python). Once you have a working deployment, you can export the following information:
+If you want to use Azure GPT on a Azure VM, you will need to create a `GPT-4o` deployment on Azure AI. If you haven't done so already, you can follow the instructions at the Azure GPT [quickstart](https://learn.microsoft.com/en-us/azure/ai-services/openai/chatgpt-quickstart?tabs=keyless%2Ctypescript-keyless%2Cpython-new%2Cbash&pivots=programming-language-python).
+
+#### Option 1: Config File (Recommended)
+Create or edit `config.json` in the `app-route` directory:
+```json
+{
+  "language_model": {
+    "name": "gpt-4.1",
+    "scope": "https://cognitiveservices.azure.com/.default",
+    "model_endpoint": "https://your-resource.openai.azure.com/",
+    "api_version": "2024-12-01-preview",
+    "deployment_name": "your-deployment-name",
+    "model_name": "gpt-4.1",
+    "supports_temperature": false,
+    "api_key": "your-api-key-here"
+  }
+}
+```
+
+#### Option 2: Environment Variables
+Export the following information:
 ```bash
 export AZURE_OPENAI_ENDPOINT="https://your-gpt-4o-deployment.openai.azure.com/"
 export AZURE_OPENAI_DEPLOYMENT_NAME="your-gpt-4o-deployment"
 export AZURE_OPENAI_API_VERSION="YYYY-MM-DD" # Optional. Defaults to "2024-10-01".
 export AZURE_OPENAI_API_KEY="API_KEY" # Not needed if Entra ID is used.
 ```
+
+#### Authentication
 Instead of explicitly specifying an API key, you can authenticate with Entra ID, which is done via `DefaultAzureCredential`. Using the [Azure CLI](https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/managed-identity) with appropriate role assignment or creating a [managed identity](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/how-to-configure-managed-identities?pivots=qs-configure-portal-windows-vm) on the host VM (with similar role assignment) are among a few ways to achieve this. For more information on authentication methods/details refer to the Azure docs (see `DefaultAzureCredential`).
+
+To enable Azure credential authentication via config, set `"use_azure_credential": true` in your config.json.
 
 ## Running Benchmark Tests
 

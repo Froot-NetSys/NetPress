@@ -19,6 +19,8 @@ def parse_args():
     parser.add_argument('--static_benchmark_generation', type=int, default=0, choices=[0, 1], help='If set to 1, generate static benchmark')
     parser.add_argument('--prompt_type', type=str, default="base", choices=["base", "cot", "few_shot_basic"], help='Choose the prompt type')
     parser.add_argument('--parallel', type=int, default=1, choices=[0, 1], help='If set to 1, run in parallel')
+    parser.add_argument('--num_switches', type=int, default=2, help='Number of switches in the topology (default: 2)')
+    parser.add_argument('--num_hosts_per_subnet', type=int, default=1, help='Number of hosts per subnet (default: 1)')
     return parser.parse_args()
 
 # Call the appropriate function based on the full_test argument
