@@ -2,6 +2,31 @@
 
 This app serves to evaluate the capabilities of different LLM agents on dynamically generated routing configuration tasks in a simulated network. The following guide outlines necessary configuration steps to get started.
 
+## Run with Docker
+```bash
+sudo docker run -it --rm \
+  --privileged \
+  --net=host \
+  -v /lib/modules:/lib/modules \
+  -v /home/lesley/NetPress:/NetPress \
+  netpress:latest \
+  /bin/bash
+```
+Inside the docker shell
+```bash
+# If your image has the Debian/Ubuntu OVS package:
+service openvswitch-switch start  2>/dev/null || \
+/etc/init.d/openvswitch-switch start 2>/dev/null || true
+```
+Test if mininet is workign in Docker
+```bash
+mn --test pingall
+```
+
+```bash
+python main.py --llm_agent_type GPT-Agent --num_queries 1 --root_dir /NetPress/app-route/results --max_iteration 10 --prompt_type base --parallel 0
+```
+
 ## Python Prerequisites
 
 To set up the Python environment, we use `conda` to create a virtual environment. You can install the required dependencies by running the following commands:

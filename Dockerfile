@@ -79,13 +79,3 @@ RUN sed -i 's|$BUILDPLATFORM|linux/amd64|g' microservices-demo/src/loadgenerator
 RUN rm -rf /var/lib/apt/lists/*
 
 COPY --chown=user . .
-
-# Create entrypoint script to start services on container startup
-RUN echo '#!/bin/bash\n\
-# Start Open vSwitch (required for Mininet)\n\
-service openvswitch-switch start 2>/dev/null || true\n\
-# Execute the command passed to docker run\n\
-exec "$@"' > /entrypoint.sh && chmod +x /entrypoint.sh
-
-ENTRYPOINT ["/entrypoint.sh"]
-CMD ["/bin/bash"]

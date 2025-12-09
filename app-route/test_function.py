@@ -23,6 +23,8 @@ def static_benchmark_run_modify(args):
     start_time_2 = datetime.now()
     # Get the unique process ID to distinguish between different instances
     unique_id = os.getpid()
+    # Expand ~ in root_dir to the actual home directory path
+    args.root_dir = os.path.expanduser(args.root_dir)
     if args.parallel == 1:
         args.root_dir = os.path.join(args.root_dir)
         if args.llm_agent_type == "Qwen/Qwen2.5-72B-Instruct":
