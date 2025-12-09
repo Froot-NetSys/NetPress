@@ -8,6 +8,11 @@
 */.mypy_cache/*
 */.coverage
 */.coverage.*
+
+# Config files with credentials (use *.template.toml as base)
+app-malt/config.toml
+app-route/config.toml
+
 app-malt/figs/*
 app-route/result/*
 *.log

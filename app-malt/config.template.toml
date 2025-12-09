@@ -1,0 +1,62 @@
+# MALT Benchmark Configuration
+# =============================
+# Copy this file to config.toml and fill in your credentials:
+#   cp config.template.toml config.toml
+#
+# Then edit config.toml and run: python run.py
+
+[model]
+# LLM agent type to use for evaluation
+# Options: "AzureGPT4Agent", "GoogleGeminiAgent", "Qwen2.5-72B-Instruct", "QwenModel_finetuned", "ReAct_Agent"
+agent_type = "AzureGPT4Agent"
+
+# Prompt strategy for the agent
+# Options: "base", "cot", "few_shot_basic", "few_shot_semantic"
+prompt_type = "base"
+
+# Path to local model weights (only needed for QwenModel_finetuned)
+model_path = ""
+
+[model.azure]
+# Azure OpenAI Configuration (for AzureGPT4Agent and ReAct_Agent)
+endpoint = "https://your-resource.openai.azure.com/"
+deployment_name = "your-deployment-name"
+api_version = "2024-12-01-preview"
+api_key = ""  # Your Azure OpenAI API key (or leave empty to use Azure credential)
+scope = "https://cognitiveservices.azure.com/.default"
+supports_temperature = false
+
+[model.google]
+# Google Gemini Configuration (for GoogleGeminiAgent)
+# Set GOOGLE_API_KEY environment variable or provide here
+api_key = ""
+
+[model.huggingface]
+# Hugging Face Configuration (for local models like Qwen)
+# Set HUGGINGFACE_TOKEN environment variable or provide here
+token = ""
+
+[benchmark]
+# Number of queries to generate for each error type
+num_queries = 10
+
+# Complexity levels to evaluate (any combination of: "level1", "level2", "level3")
+complexity_levels = ["level1", "level2"]
+
+# Path to save/load the generated benchmark queries
+benchmark_path = "data/benchmark_malt.jsonl"
+
+# Set to true to regenerate queries, false to use existing benchmark file
+regenerate_queries = false
+
+# Query range (optional - leave as 0/0 to run all queries)
+start_index = 0
+end_index = 0  # 0 means run until the end
+
+[output]
+# Directory for output files and figures
+output_dir = "logs/llm_agents"
+
+# Output filename for evaluation results (JSONL format)
+output_file = "results.jsonl"
+

@@ -31,6 +31,12 @@ from langchain_openai import AzureChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 import getpass
 
+# TOML support (Python 3.11+ has tomllib built-in)
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib
+
 # Load environ variables from .env, will not override existing environ variables
 load_dotenv()
 
@@ -120,10 +126,12 @@ class GoogleGeminiAgent:
 
 
 class AzureGPT4Agent:
-    DEFAULT_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config.json")
+    DEFAULT_TOML_PATH = os.path.join(os.path.dirname(__file__), "config.toml")
+    DEFAULT_TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "config.template.toml")
+    DEFAULT_JSON_PATH = os.path.join(os.path.dirname(__file__), "config.json")
     
     def __init__(self, prompt_type="base", config_path=None):
-        self.config = self.load_config(config_path or self.DEFAULT_CONFIG_PATH)
+        self.config = self.load_config(config_path)
         self.configure_environment_variables()
         
         # Get temperature setting from config (default to 0.0 if not supported)
@@ -146,17 +154,51 @@ class AzureGPT4Agent:
         else:
             self.prompt_agent = BasePromptAgent()
 
+    @classmethod
+    def load_config(cls, config_path=None):
+        """Load configuration from TOML (preferred) or JSON file."""
+        # If explicit path provided, use it
+        if config_path and os.path.exists(config_path):
+            return cls._load_config_file(config_path)
+        
+        # Prefer TOML over JSON
+        if os.path.exists(cls.DEFAULT_TOML_PATH):
+            return cls._load_config_file(cls.DEFAULT_TOML_PATH)
+        elif os.path.exists(cls.DEFAULT_JSON_PATH):
+            return cls._load_config_file(cls.DEFAULT_JSON_PATH)
+        else:
+            # Check if template exists and suggest copying it
+            if os.path.exists(cls.DEFAULT_TEMPLATE_PATH):
+                print(f"No config.toml found. To get started:")
+                print(f"  cp config.template.toml config.toml")
+                print(f"  # Then edit config.toml with your credentials")
+            print("Using environment variables/prompts for configuration")
+            return {}
+    
     @staticmethod
-    def load_config(config_path):
-        """Load configuration from a JSON file."""
-        if os.path.exists(config_path):
-            print(f"Loading config from: {config_path}")
+    def _load_config_file(config_path):
+        """Load config from either TOML or JSON file."""
+        print(f"Loading config from: {config_path}")
+        
+        if config_path.endswith('.toml'):
+            with open(config_path, 'rb') as f:
+                config = tomllib.load(f)
+            # Extract Azure config from TOML structure
+            azure = config.get("model", {}).get("azure", {})
+            return {
+                "model_endpoint": azure.get("endpoint", ""),
+                "deployment_name": azure.get("deployment_name", ""),
+                "api_version": azure.get("api_version", ""),
+                "api_key": azure.get("api_key", ""),
+                "scope": azure.get("scope", "https://cognitiveservices.azure.com/.default"),
+                "supports_temperature": azure.get("supports_temperature", True),
+                "use_azure_credential": not azure.get("api_key", ""),  # Use credential if no API key
+            }
+        else:
+            # JSON config (legacy support)
             with open(config_path, 'r') as f:
                 config = json.load(f)
             return config.get("language_model", {})
-        else:
-            print(f"Config file not found at {config_path}, using environment variables/prompts")
-            return {}
 
     def configure_environment_variables(self):
         """Sets environment variables from config file, falling back to Azure credential or user prompt."""
@@ -416,7 +458,7 @@ class ReAct_Agent:
     def __init__(self, prompt_type="react", config_path=None):
         # Use AzureGPT4Agent to load config and set environment variables
         azure_agent = AzureGPT4Agent.__new__(AzureGPT4Agent)
-        azure_agent.config = AzureGPT4Agent.load_config(config_path or AzureGPT4Agent.DEFAULT_CONFIG_PATH)
+        azure_agent.config = AzureGPT4Agent.load_config(config_path)
         azure_agent.configure_environment_variables()
         
         self.llm = AzureChatOpenAI(
