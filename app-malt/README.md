@@ -2,6 +2,12 @@
 
 This guide outlines steps to evaluate LLM agent performance on data center planning tasks. Agents are placed in a mock datacenter and tasked with making arbitrary, nonbreaking modifications to the topology while obeying operational constraints.
 
+## Running MALT evaluation within Docker
+```bash
+docker run -it --rm netpress:latest /bin/bash
+conda activate ai_gym_env
+```
+
 ## Python Prerequisites
 
 To set up the Python environment, we use `conda` to create a virtual environment. You can install the required dependencies by running the following commands:

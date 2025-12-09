@@ -28,8 +28,14 @@ import torch.multiprocessing as mp
 
 # Load environ variables from .env, will not override existing environ variables
 load_dotenv()
-huggingface_token = os.getenv("HUGGINGFACE_TOKEN")
-login(token=huggingface_token)
+
+def login_huggingface():
+    """Login to Huggingface Hub. Only needed for local LLMs."""
+    huggingface_token = os.getenv("HUGGINGFACE_TOKEN")
+    if huggingface_token:
+        login(token=huggingface_token)
+    else:
+        print("Warning: HUGGINGFACE_TOKEN not found. You may need to set it for downloading gated models.")
 # For Azure OpenAI GPT4
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from langchain_openai import AzureChatOpenAI
@@ -196,6 +202,7 @@ class AzureGPT4Agent:
    
 class QwenModel:
     def __init__(self, prompt_type="base"):
+        login_huggingface()  # Login to Huggingface for local LLM
         self.model_name = "Qwen/Qwen2.5-72B-Instruct-GPTQ-Int4"
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.llm = LLM(
@@ -267,6 +274,7 @@ class QwenModel:
 
 class QwenModel_finetuned:
     def __init__(self, prompt_type="base", model_path=None):
+        login_huggingface()  # Login to Huggingface for local LLM
         self.model_name = "Fine-tuned-Qwen-7B"
         self.model_path = model_path
         self.tokenizer = AutoTokenizer.from_pretrained(
