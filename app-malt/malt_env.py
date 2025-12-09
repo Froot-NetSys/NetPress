@@ -28,18 +28,18 @@ OUTPUT_JSONL_FILE = 'gpt4.jsonl'
 
 
 class BenchmarkEvaluator:
-    def __init__(self, graph_data, llm_model_type, prompt_type, model_path=None):
+    def __init__(self, graph_data, llm_agent_type, prompt_type, model_path=None):
         self.graph_data = graph_data
         # Call the output code from LLM agents file
-        if llm_model_type == "AzureGPT4Agent":
+        if llm_agent_type == "AzureGPT4Agent":
             self.llm_agent = AzureGPT4Agent(prompt_type)
-        elif llm_model_type == "GoogleGeminiAgent":
+        elif llm_agent_type == "GoogleGeminiAgent":
             self.llm_agent = GoogleGeminiAgent(prompt_type)
-        elif llm_model_type == "Qwen2.5-72B-Instruct":
+        elif llm_agent_type == "Qwen2.5-72B-Instruct":
             self.llm_agent = QwenModel(prompt_type)
-        elif llm_model_type == "QwenModel_finetuned":
+        elif llm_agent_type == "QwenModel_finetuned":
             self.llm_agent = QwenModel_finetuned(prompt_type, model_path=model_path)
-        elif llm_model_type == "ReAct_Agent":
+        elif llm_agent_type == "ReAct_Agent":
             self.llm_agent = ReAct_Agent(prompt_type='base')
 
     def userQuery(self, current_query, golden_answer):

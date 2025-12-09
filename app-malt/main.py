@@ -17,7 +17,7 @@ import math
 # Define a configuration for the benchmark
 def parse_args():
     parser = argparse.ArgumentParser(description="Benchmark Configuration")
-    parser.add_argument('--llm_model_type', type=str, default='AzureGPT4Agent', help='Choose the LLM agent', choices=['AzureGPT4Agent', 
+    parser.add_argument('--llm_agent_type', type=str, default='AzureGPT4Agent', help='Choose the LLM agent', choices=['AzureGPT4Agent', 
                                                                                                                       'GoogleGeminiAgent',     
                                                                                                                       'Qwen2.5-72B-Instruct', 
                                                                                                                       'QwenModel_finetuned', 
@@ -41,7 +41,7 @@ def parse_args():
 def main(args):
 
     benchmark_config = {
-        'llm_model_type': args.llm_model_type,
+        'llm_agent_type': args.llm_agent_type,
         'model_path': args.model_path,
         'prompt_type': args.prompt_type,
         'num_queries': args.num_queries,
@@ -82,7 +82,7 @@ def main(args):
             query_generator.load_queries_from_file(benchmark_path)
 
     # Load the evaluator
-    evaluator = BenchmarkEvaluator(graph_data=query_generator.malt_real_graph, llm_model_type=benchmark_config['llm_model_type'], 
+    evaluator = BenchmarkEvaluator(graph_data=query_generator.malt_real_graph, llm_agent_type=benchmark_config['llm_agent_type'], 
                                    prompt_type=benchmark_config['prompt_type'], model_path=benchmark_config['model_path'])
 
     # the format is {"messages": [{"question": "XXX."}, {"answer": "YYY"}]}
@@ -120,7 +120,7 @@ def main(args):
         evaluator.ground_truth_check(current_query, task_label, ret, ground_truth_ret, ret_graph_copy, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency, output_path)
 
         # have to sleep for Gemini API quota
-        if benchmark_config['llm_model_type'] == 'GoogleGeminiAgent':
+        if benchmark_config['llm_agent_type'] == 'GoogleGeminiAgent':
             time.sleep(10)
 
     # Analyze the results
@@ -158,7 +158,7 @@ def main(args):
     bars = plt.bar(task_labels, avg_latencies, color='skyblue', yerr=std_latencies, capsize=5)
     plt.xlabel('Task Label')
     plt.ylabel('Average Query Run Latency (seconds)')
-    plt.title(f'Average Query Run Latency ({args.llm_model_type}, Avg={np.mean(avg_latencies):.2f}s ±{np.mean(std_latencies):.2f}s)')
+    plt.title(f'Average Query Run Latency ({args.llm_agent_type}, Avg={np.mean(avg_latencies):.2f}s ±{np.mean(std_latencies):.2f}s)')
     # Add error values on top of each bar
     for i, bar in enumerate(bars):
         height = bar.get_height()
@@ -167,7 +167,7 @@ def main(args):
                 ha='center', va='bottom')
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
-    plt.savefig(os.path.join(figs_dir, f'average_latency_{args.llm_model_type}_{timestamp}.png'), dpi=300)
+    plt.savefig(os.path.join(figs_dir, f'average_latency_{args.llm_agent_type}_{timestamp}.png'), dpi=300)
     # plt.show()
 
     # plot the pass rate of correctness for each task label
@@ -197,7 +197,7 @@ def main(args):
     # print the average pass rate and error margin on the title
     avg_pass_rate = np.mean(correctness_pass_rates)
     error_margin = np.mean(error_margins)
-    plt.title(f'Correctness Pass Rate ({args.llm_model_type}, N={sample_sizes}, Avg={avg_pass_rate:.2f}% ±{error_margin:.2f}%)')
+    plt.title(f'Correctness Pass Rate ({args.llm_agent_type}, N={sample_sizes}, Avg={avg_pass_rate:.2f}% ±{error_margin:.2f}%)')
     # Add error values on top of each bar
     for i, bar in enumerate(bars):
         height = bar.get_height()
@@ -206,7 +206,7 @@ def main(args):
                 ha='center', va='bottom')
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
-    plt.savefig(os.path.join(figs_dir, f'correctness_pass_rate_{args.llm_model_type}_{timestamp}.png'), dpi=300)
+    plt.savefig(os.path.join(figs_dir, f'correctness_pass_rate_{args.llm_agent_type}_{timestamp}.png'), dpi=300)
     # plt.show()
     
     # plot the pass rate of safety for each task label
@@ -229,7 +229,7 @@ def main(args):
     # print the average pass rate and error margin on the title
     avg_pass_rate = np.mean(safety_pass_rates)
     error_margin = np.mean(safety_error_margins)
-    plt.title(f'Safety Pass Rate ({args.llm_model_type}, N={sample_sizes}, Avg={avg_pass_rate:.2f}% ±{error_margin:.2f}%)')
+    plt.title(f'Safety Pass Rate ({args.llm_agent_type}, N={sample_sizes}, Avg={avg_pass_rate:.2f}% ±{error_margin:.2f}%)')
     # Add error values on top of each bar
     for i, bar in enumerate(bars):
         height = bar.get_height()
@@ -238,7 +238,7 @@ def main(args):
                 ha='center', va='bottom')
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
-    plt.savefig(os.path.join(figs_dir, f'safety_pass_rate_{args.llm_model_type}_{timestamp}.png'), dpi=300)
+    plt.savefig(os.path.join(figs_dir, f'safety_pass_rate_{args.llm_agent_type}_{timestamp}.png'), dpi=300)
     # plt.show()
 
 
