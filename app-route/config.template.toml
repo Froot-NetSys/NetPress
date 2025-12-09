@@ -1,0 +1,62 @@
+# Route Benchmark Configuration
+# ==============================
+# Copy this file to config.toml and fill in your credentials:
+#   cp config.template.toml config.toml
+#
+# Then edit config.toml and run: python run.py
+
+[model]
+# LLM agent type to use for evaluation
+# Options: "GPT-Agent", "Qwen/Qwen2.5-72B-Instruct", "ReAct_Agent"
+agent_type = "GPT-Agent"
+
+# Prompt strategy for the agent
+# Options: "base", "cot", "few_shot_basic"
+prompt_type = "base"
+
+# Enable vLLM for local models (1 = enabled, 0 = disabled)
+vllm = 1
+
+# Number of GPUs for tensor parallelism (only for local models with vLLM)
+num_gpus = 1
+
+[model.azure]
+# Azure OpenAI Configuration (for GPT-Agent and ReAct_Agent)
+endpoint = "https://your-resource.openai.azure.com/"
+deployment_name = "your-deployment-name"
+api_version = "2024-12-01-preview"
+api_key = ""  # Your Azure OpenAI API key (or leave empty to use Azure credential)
+scope = "https://cognitiveservices.azure.com/.default"
+supports_temperature = false
+
+[model.huggingface]
+# Hugging Face Configuration (for local models like Qwen)
+# Set HUGGINGFACE_TOKEN environment variable or provide here
+token = ""
+
+[benchmark]
+# Number of queries to generate for each error type
+num_queries = 10
+
+# Maximum iterations per query
+max_iteration = 10
+
+# Generate new benchmark config (true) or use existing (false)
+regenerate = false
+
+# Path for benchmark config file (relative to output_dir)
+benchmark_path = "error_config.json"
+
+# Run prompt types in parallel (true/false)
+# Note: Don't use with num_gpus > 1 for local models
+parallel = false
+
+[topology]
+# Network topology configuration
+num_switches = 2
+num_hosts_per_subnet = 1
+
+[output]
+# Root directory for all output files (logs, results, figures)
+output_dir = "results"
+
