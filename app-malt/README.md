@@ -4,19 +4,6 @@ Evaluate LLM agent performance on datacenter planning tasks. Agents operate in a
 
 ## Quick Start
 
-```bash
-# 1. Copy template and add your credentials
-cp config.template.toml config.toml
-nano config.toml
-
-# 2. Run evaluation
-python run.py
-```
-
-That's it! All configuration is in `config.toml`.
-
-## Setup
-
 ### Docker (Recommended)
 ```bash
 # Mount local directory to use your latest changes
@@ -27,12 +14,6 @@ python run.py
 ```
 
 > **Note**: The `-v $(pwd):/NetPress` flag mounts your local directory into the container, so any config changes you make locally are immediately available inside Docker.
-
-### Local Installation
-```bash
-conda env create -f environment_ai_gym.yml
-conda activate ai_gym
-```
 
 ## Configuration
 

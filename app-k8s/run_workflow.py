@@ -249,9 +249,8 @@ async def run_agent_test(args):
     plot_summary_results(args.root_dir, 150)
 
 
-# Main entry point
-if __name__ == "__main__":
-    expected_results = {
+# Expected connectivity results for correctness checking
+expected_results = {
     "frontend": {
         "adservice:9555": True,
         "cartservice:7070": True,
@@ -365,6 +364,10 @@ if __name__ == "__main__":
         "redis-cart:6379": False
     }
 }
+
+
+# Main entry point
+if __name__ == "__main__":
     args = parse_args()
     if args.agent_test == 1:
         asyncio.run(run_agent_test(args))

@@ -12,6 +12,10 @@
 # Config files with credentials (use *.template.toml as base)
 app-malt/config.toml
 app-route/config.toml
+app-k8s/config.toml
+
+# Results directories
+app-k8s/results/*
 
 app-malt/figs/*
 app-route/results/*

@@ -70,10 +70,10 @@ RUN curl -Lo skaffold https://storage.googleapis.com/skaffold/releases/v2.15.0/s
 RUN chmod +x skaffold
 RUN mv skaffold /usr/local/bin
 
-# Fetch Microservices repository and specify platform in loadgenerator Dockerfile.
+# Fetch Microservices repository to /microservices-demo (outside /NetPress so volume mounts don't hide it)
 RUN apt-get install -y git
-RUN git clone https://github.com/GoogleCloudPlatform/microservices-demo.git
-RUN sed -i 's|$BUILDPLATFORM|linux/amd64|g' microservices-demo/src/loadgenerator/Dockerfile
+RUN git clone https://github.com/GoogleCloudPlatform/microservices-demo.git /microservices-demo
+RUN sed -i 's|$BUILDPLATFORM|linux/amd64|g' /microservices-demo/src/loadgenerator/Dockerfile
 
 # Clean up apt cache to reduce image size.
 RUN rm -rf /var/lib/apt/lists/*
