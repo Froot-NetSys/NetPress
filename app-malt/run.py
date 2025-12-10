@@ -150,7 +150,13 @@ Examples:
     # Run the benchmark
     print("Starting MALT benchmark evaluation...\n")
     run_benchmark(run_args)
-    print("\nBenchmark evaluation complete!")
+    
+    print("\n" + "=" * 60)
+    print("Benchmark evaluation complete!")
+    print("=" * 60)
+    print(f"  Results:  {run_args.output_dir}/{run_args.output_file}")
+    print(f"  Figures:  {run_args.output_dir}/figs/")
+    print("=" * 60)
 
 
 if __name__ == "__main__":

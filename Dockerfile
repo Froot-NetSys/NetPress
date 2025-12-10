@@ -75,6 +75,9 @@ RUN apt-get install -y git
 RUN git clone https://github.com/GoogleCloudPlatform/microservices-demo.git /microservices-demo
 RUN sed -i 's|$BUILDPLATFORM|linux/amd64|g' /microservices-demo/src/loadgenerator/Dockerfile
 
+# Install network utilities for Mininet (ping, traceroute, etc.)
+RUN apt-get update && apt-get install -y iputils-ping net-tools iproute2 traceroute
+
 # Clean up apt cache to reduce image size.
 RUN rm -rf /var/lib/apt/lists/*
 

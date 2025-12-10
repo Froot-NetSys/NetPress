@@ -31,7 +31,7 @@ kind create cluster
 
 # Verify the cluster is running
 kubectl get nodes
-# Expected output: One node with STATUS "Ready"
+# Wait until one node show with STATUS "Ready"
 ```
 
 ### Step 3: Deploy Microservices (Takes ~20 minutes)
@@ -51,6 +51,7 @@ kubectl get pods -w
 
 ```bash
 # Setup config (first time only)
+conda activate mininet
 cd /NetPress/app-k8s
 cp config.template.toml config.toml
 nano config.toml  # Add your Azure API key
