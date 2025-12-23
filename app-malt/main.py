@@ -3,21 +3,98 @@ import pandas as pd
 import jsonlines
 import random
 import os
+import asyncio
+import httpx
 import time
 import matplotlib.pyplot as plt
 import json
 from solid_step_helper import get_node_value_ranges, getGraphData, \
 solid_step_add_node_to_graph, solid_step_counting_query, solid_step_remove_node_from_graph, solid_step_list_child_nodes, solid_step_update_node_value, solid_step_rank_child_nodes
-from dy_query_generation import QueryGenerator
+from dy_query_generation import QueryGenerator, ComplexityLevel
 from malt_env import BenchmarkEvaluator
 import argparse
 from scipy import stats
 import math
+import cattrs
+from loguru import logger
+from dataclasses import dataclass
+from uuid import uuid4
+from typing import Any
+
+from a2a.server.agent_execution import AgentExecutor, RequestContext
+from a2a.server.events import EventQueue
+from a2a.utils import new_agent_text_message, new_data_artifact, new_task
+from a2a.client import A2ACardResolver, A2AClient
+from a2a.types import (
+    AgentCard,
+    MessageSendParams,
+    SendMessageRequest,
+    SendStreamingMessageRequest,
+)
+from a2a.utils.constants import (
+    AGENT_CARD_WELL_KNOWN_PATH,
+    EXTENDED_AGENT_CARD_PATH,
+)
+
+
+async def get_agent_card(http_client: httpx.AsyncClient, base_url: str):
+    resolver = A2ACardResolver(
+        httpx_client=http_client,
+        base_url=base_url,
+        # agent_card_path uses default, extended_agent_card_path also uses default
+    )
+    try:
+        logger.info(f'Attempting to fetch public agent card from: {base_url}{AGENT_CARD_WELL_KNOWN_PATH}')
+        _public_card = await resolver.get_agent_card()  # Fetches from default public path
+        logger.info('Successfully fetched public agent card:')
+        logger.info(_public_card.model_dump_json(indent=2, exclude_none=True))
+        final_agent_card_to_use = _public_card
+        logger.info('\nUsing PUBLIC agent card for client initialization (default).')
+    except Exception as e:
+        logger.error(f'Failed to fetch public agent card: {e}') 
+        final_agent_card_to_use = None
+    return final_agent_card_to_use
+
+
+async def _call_remote_agent_with_client(a2a_client: A2AClient, query_text: str) -> str:
+    send_message_payload: dict[str, Any] = {
+        'message': {
+            'role': 'user',
+            'parts': [
+                {'kind': 'text', 'text': query_text}
+            ],
+            'messageId': uuid4().hex,
+        },
+    }
+    request = SendMessageRequest(id=str(uuid4()), params=MessageSendParams(**send_message_payload))
+    response = await a2a_client.send_message(request)
+    response_json = response.model_dump(mode='json', exclude_none=True)
+    resp_msg = response_json.get('params', {}).get('message', {})
+    parts = resp_msg.get('parts', [])
+    llm_texts = [p.get('text', '') for p in parts if isinstance(p, dict) and p.get('kind') == 'text']
+    llm_answer = '\n'.join(llm_texts).strip()
+    return llm_answer
+
+
+@dataclass
+class MaltConfig:
+    llm_model_type: str
+    model_path: str
+    prompt_type: str
+    num_queries: int
+    complexity_level: list[ComplexityLevel]
+    output_dir: str = 'output'
+    output_file: str = 'eval_results.jsonl'
+    dynamic_benchmark_path: str = 'malt_benchmark.jsonl'
+    regenerate_query: bool = False
+    start_index: int = 0
+    end_index: int | None = None
+
 
 # Define a configuration for the benchmark
 def parse_args():
     parser = argparse.ArgumentParser(description="Benchmark Configuration")
-    parser.add_argument('--llm_agent_type', type=str, default='AzureGPT4Agent', help='Choose the LLM agent', choices=['AzureGPT4Agent', 
+    parser.add_argument('--llm_model_type', type=str, default='AzureGPT4Agent', help='Choose the LLM agent', choices=['AzureGPT4Agent', 
                                                                                                                       'GoogleGeminiAgent',     
                                                                                                                       'Qwen2.5-72B-Instruct', 
                                                                                                                       'QwenModel_finetuned', 
@@ -38,21 +115,9 @@ def parse_args():
 # Example usage:
 # python main.py --llm_agent_type AzureGPT4Agent --num_queries 2 --complexity_level level1 --output_dir logs/llm_agents --output_file gpt4o.jsonl --dynamic_benchmark_path data/benchmark_malt.jsonl
 
-def main(args):
-
-    benchmark_config = {
-        'llm_agent_type': args.llm_agent_type,
-        'model_path': args.model_path,
-        'prompt_type': args.prompt_type,
-        'num_queries': args.num_queries,
-        'complexity_level': args.complexity_level,
-        'output_dir': args.output_dir,
-        'output_file': args.output_file,
-        'dynamic_benchmark_path': args.dynamic_benchmark_path,
-        'regenerate_query': args.regenerate_query,
-        'start_index': args.start_index,
-        'end_index': args.end_index
-    }
+async def main(args):
+    # Validate command line args.
+    benchmark_config = cattrs.structure(vars(args), MaltConfig)
 
     # create the output directory if it does not exist
     if not os.path.exists(args.output_dir):
@@ -66,24 +131,24 @@ def main(args):
 
     # dynamically generate or load existing queries
     query_generator = QueryGenerator()
-    benchmark_path = benchmark_config['dynamic_benchmark_path']
+    benchmark_path = benchmark_config.dynamic_benchmark_path
     
-    if benchmark_config['regenerate_query']:
+    if benchmark_config.regenerate_query:
         print("Generating new queries due to regenerate_query=True")
-        query_generator.generate_queries(num_each_type=benchmark_config['num_queries'], complexity_level=benchmark_config['complexity_level'])
+        query_generator.generate_queries(num_each_type=benchmark_config.num_queries, complexity_level=benchmark_config.complexity_level)
         query_generator.save_queries_to_file(benchmark_path)
     else:
         if not os.path.exists(benchmark_path):
             print(f"Benchmark file {benchmark_path} does not exist. Generating new queries...")
-            query_generator.generate_queries(num_each_type=benchmark_config['num_queries'], complexity_level=benchmark_config['complexity_level'])
+            query_generator.generate_queries(num_each_type=benchmark_config.num_queries, complexity_level=benchmark_config.complexity_level)
             query_generator.save_queries_to_file(benchmark_path)
         else:
             print(f"Loading existing benchmark from {benchmark_path}")
             query_generator.load_queries_from_file(benchmark_path)
 
     # Load the evaluator
-    evaluator = BenchmarkEvaluator(graph_data=query_generator.malt_real_graph, llm_agent_type=benchmark_config['llm_agent_type'], 
-                                   prompt_type=benchmark_config['prompt_type'], model_path=benchmark_config['model_path'])
+    evaluator = BenchmarkEvaluator(graph_data=query_generator.malt_real_graph, llm_agent_type=benchmark_config.llm_model_type, 
+                                   prompt_type=benchmark_config.prompt_type, model_path=benchmark_config.model_path)
 
     # the format is {"messages": [{"question": "XXX."}, {"answer": "YYY"}]}
     benchmark_data = []
@@ -92,8 +157,8 @@ def main(args):
             benchmark_data.append(obj['messages'])
     
     # Skip to start_index if specified
-    start_idx = max(benchmark_config['start_index'], 0)
-    end_idx = len(benchmark_data) if not isinstance(benchmark_config['end_index'], int) else min(benchmark_config['end_index'], len(benchmark_data))
+    start_idx = max(benchmark_config.start_index, 0)
+    end_idx = len(benchmark_data) if not isinstance(benchmark_config.end_index, int) else min(benchmark_config.end_index, len(benchmark_data))
     if 0 < start_idx or end_idx < len(benchmark_data):
         print(f"Starting from query index {start_idx} (skipping {start_idx} queries) and ending at {end_idx} (processing {end_idx - start_idx} queries).")
         if start_idx >= end_idx:
@@ -115,12 +180,25 @@ def main(args):
                 golden_answer = item['answer']
             elif 'task_label' in item:
                 task_label = item['task_label']
-            
-        ret, ground_truth_ret, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency, ret_graph_copy = evaluator.userQuery(current_query, golden_answer)
+        
+        target_agent_url = "http://localhost:8000"  # Replace with the actual URL of the target agent
+        llm_answer = None
+        async with httpx.AsyncClient() as httpx_client:
+            agent_card = await get_agent_card(httpx_client, target_agent_url)
+            if agent_card is None:
+                err_msg = f'Unable to fetch agent card from {target_agent_url}.'
+                logger.error(err_msg)
+            client = A2AClient(httpx_client=httpx_client, agent_card=agent_card)
+            try:
+                llm_answer = await _call_remote_agent_with_client(client, current_query)
+            except Exception as e:
+                err_msg = f'Error calling remote agent: {e}'
+                logger.exception(err_msg)
+        ret, ground_truth_ret, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency, ret_graph_copy = evaluator.run_query_output(current_query, golden_answer, llm_answer=llm_answer)
         evaluator.ground_truth_check(current_query, task_label, ret, ground_truth_ret, ret_graph_copy, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency, output_path)
 
         # have to sleep for Gemini API quota
-        if benchmark_config['llm_agent_type'] == 'GoogleGeminiAgent':
+        if benchmark_config.llm_model_type == 'GoogleGeminiAgent':
             time.sleep(10)
 
     # Analyze the results
@@ -158,7 +236,7 @@ def main(args):
     bars = plt.bar(task_labels, avg_latencies, color='skyblue', yerr=std_latencies, capsize=5)
     plt.xlabel('Task Label')
     plt.ylabel('Average Query Run Latency (seconds)')
-    plt.title(f'Average Query Run Latency ({args.llm_agent_type}, Avg={np.mean(avg_latencies):.2f}s ±{np.mean(std_latencies):.2f}s)')
+    plt.title(f'Average Query Run Latency ({args.llm_model_type}, Avg={np.mean(avg_latencies):.2f}s ±{np.mean(std_latencies):.2f}s)')
     # Add error values on top of each bar
     for i, bar in enumerate(bars):
         height = bar.get_height()
@@ -167,7 +245,7 @@ def main(args):
                 ha='center', va='bottom')
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
-    plt.savefig(os.path.join(figs_dir, f'average_latency_{args.llm_agent_type}_{timestamp}.png'), dpi=300)
+    plt.savefig(os.path.join(figs_dir, f'average_latency_{args.llm_model_type}_{timestamp}.png'), dpi=300)
     # plt.show()
 
     # plot the pass rate of correctness for each task label
@@ -197,7 +275,7 @@ def main(args):
     # print the average pass rate and error margin on the title
     avg_pass_rate = np.mean(correctness_pass_rates)
     error_margin = np.mean(error_margins)
-    plt.title(f'Correctness Pass Rate ({args.llm_agent_type}, N={sample_sizes}, Avg={avg_pass_rate:.2f}% ±{error_margin:.2f}%)')
+    plt.title(f'Correctness Pass Rate ({args.llm_model_type}, N={sample_sizes}, Avg={avg_pass_rate:.2f}% ±{error_margin:.2f}%)')
     # Add error values on top of each bar
     for i, bar in enumerate(bars):
         height = bar.get_height()
@@ -206,7 +284,7 @@ def main(args):
                 ha='center', va='bottom')
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
-    plt.savefig(os.path.join(figs_dir, f'correctness_pass_rate_{args.llm_agent_type}_{timestamp}.png'), dpi=300)
+    plt.savefig(os.path.join(figs_dir, f'correctness_pass_rate_{args.llm_model_type}_{timestamp}.png'), dpi=300)
     # plt.show()
     
     # plot the pass rate of safety for each task label
@@ -229,7 +307,7 @@ def main(args):
     # print the average pass rate and error margin on the title
     avg_pass_rate = np.mean(safety_pass_rates)
     error_margin = np.mean(safety_error_margins)
-    plt.title(f'Safety Pass Rate ({args.llm_agent_type}, N={sample_sizes}, Avg={avg_pass_rate:.2f}% ±{error_margin:.2f}%)')
+    plt.title(f'Safety Pass Rate ({args.llm_model_type}, N={sample_sizes}, Avg={avg_pass_rate:.2f}% ±{error_margin:.2f}%)')
     # Add error values on top of each bar
     for i, bar in enumerate(bars):
         height = bar.get_height()
@@ -238,11 +316,11 @@ def main(args):
                 ha='center', va='bottom')
     plt.xticks(rotation=45, ha='right')
     plt.tight_layout()
-    plt.savefig(os.path.join(figs_dir, f'safety_pass_rate_{args.llm_agent_type}_{timestamp}.png'), dpi=300)
+    plt.savefig(os.path.join(figs_dir, f'safety_pass_rate_{args.llm_model_type}_{timestamp}.png'), dpi=300)
     # plt.show()
 
 
 # run the main function
 if __name__ == "__main__":
     args = parse_args()
-    main(args)
+    asyncio.run(main(args))

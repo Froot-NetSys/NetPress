@@ -18,7 +18,7 @@ import re
 import time
 import sys
 import numpy as np
-from llm_model import AzureGPT4Agent, GoogleGeminiAgent, QwenModel, QwenModel_finetuned, ReAct_Agent
+# from llm_model import AzureGPT4Agent, GoogleGeminiAgent, QwenModel, QwenModel_finetuned, ReAct_Agent
 from error_check import SafetyChecker
 
 
@@ -28,36 +28,51 @@ OUTPUT_JSONL_FILE = 'gpt4.jsonl'
 
 
 class BenchmarkEvaluator:
-    def __init__(self, graph_data, llm_agent_type, prompt_type, model_path=None):
+    def __init__(self, graph_data, llm_agent_type=None, prompt_type=None, model_path=None):
         self.graph_data = graph_data
-        # Call the output code from LLM agents file
-        if llm_agent_type == "AzureGPT4Agent":
-            self.llm_agent = AzureGPT4Agent(prompt_type)
-        elif llm_agent_type == "GoogleGeminiAgent":
-            self.llm_agent = GoogleGeminiAgent(prompt_type)
-        elif llm_agent_type == "Qwen2.5-72B-Instruct":
-            self.llm_agent = QwenModel(prompt_type)
-        elif llm_agent_type == "QwenModel_finetuned":
-            self.llm_agent = QwenModel_finetuned(prompt_type, model_path=model_path)
-        elif llm_agent_type == "ReAct_Agent":
-            self.llm_agent = ReAct_Agent(prompt_type='base')
+        self.llm_agent = None
+        self.llm_agent_type = llm_agent_type
+        # Instantiate a local LLM agent only if an explicit supported type is provided
+        # if llm_agent_type == "AzureGPT4Agent":
+        #     self.llm_agent = AzureGPT4Agent(prompt_type)
+        # elif llm_agent_type == "GoogleGeminiAgent":
+        #     self.llm_agent = GoogleGeminiAgent(prompt_type)
+        # elif llm_agent_type == "Qwen2.5-72B-Instruct":
+        #     self.llm_agent = QwenModel(prompt_type)
+        # elif llm_agent_type == "QwenModel_finetuned":
+        #     self.llm_agent = QwenModel_finetuned(prompt_type, model_path=model_path)
+        # elif llm_agent_type == "ReAct_Agent":
+        #     self.llm_agent = ReAct_Agent(prompt_type='base')
 
-    def userQuery(self, current_query, golden_answer):
-        # for each prompt in the prompt_list, append it as the value of {'query': prompt}
+    def run_query_output(self, current_query, golden_answer, llm_answer=None):
+        """Evaluate a single query against the graph.
+
+        If `llm_answer` is provided, it will be used directly (for A2A workflows).
+        Otherwise, a locally instantiated agent (if available) will be called.
+        """
         print("Query: ", current_query)
 
         G = self.graph_data
         
         start_time = time.time()
 
-        llm_answer = self.llm_agent.call_agent(current_query)
+        # If no external LLM answer provided, call the local agent if available
+        if llm_answer is None:
+            if self.llm_agent is None:
+                llm_answer = None
+            else:
+                llm_answer = self.llm_agent.call_agent(current_query)
         print("LLM answer: ", llm_answer)
 
-        try:
-            exec(llm_answer)
-            ret = eval("process_graph(copy.deepcopy(G))")
-        except Exception:
-            ret = {'type': "error", 'data': traceback.format_exc()}
+        if llm_answer is None:
+            # Provide a useful error structure that's consistent with existing handling
+            ret = {'type': 'error', 'data': 'No LLM response provided and no local LLM agent available.'}
+        else:
+            try:
+                exec(llm_answer)
+                ret = eval("process_graph(copy.deepcopy(G))")
+            except Exception:
+                ret = {'type': "error", 'data': traceback.format_exc()}
         
         query_run_latency = time.time() - start_time
 

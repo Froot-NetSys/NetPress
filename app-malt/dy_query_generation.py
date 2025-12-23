@@ -5,6 +5,14 @@ import matplotlib.pyplot as plt
 import json
 from solid_step_helper import get_node_value_ranges, getGraphData, \
 solid_step_add_node_to_graph, solid_step_counting_query, solid_step_remove_node_from_graph, solid_step_list_child_nodes, solid_step_update_node_value, solid_step_rank_child_nodes
+from enum import Enum
+
+
+class ComplexityLevel(Enum):
+    LEVEL_1 = 'level1'
+    LEVEL_2 = 'level2'
+    LEVEL_3 = 'level3'
+
 
 class QueryGenerator:
     def __init__(self,):
