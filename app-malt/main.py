@@ -8,16 +8,11 @@ import httpx
 import time
 import matplotlib.pyplot as plt
 import json
-from solid_step_helper import get_node_value_ranges, getGraphData, \
-solid_step_add_node_to_graph, solid_step_counting_query, solid_step_remove_node_from_graph, solid_step_list_child_nodes, solid_step_update_node_value, solid_step_rank_child_nodes
-from dy_query_generation import QueryGenerator, ComplexityLevel
-from malt_env import BenchmarkEvaluator
 import argparse
 from scipy import stats
-import math
 import cattrs
 from loguru import logger
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import uuid4
 from typing import Any
 
@@ -36,44 +31,9 @@ from a2a.utils.constants import (
     EXTENDED_AGENT_CARD_PATH,
 )
 
-
-async def get_agent_card(http_client: httpx.AsyncClient, base_url: str):
-    resolver = A2ACardResolver(
-        httpx_client=http_client,
-        base_url=base_url,
-        # agent_card_path uses default, extended_agent_card_path also uses default
-    )
-    try:
-        logger.info(f'Attempting to fetch public agent card from: {base_url}{AGENT_CARD_WELL_KNOWN_PATH}')
-        _public_card = await resolver.get_agent_card()  # Fetches from default public path
-        logger.info('Successfully fetched public agent card:')
-        logger.info(_public_card.model_dump_json(indent=2, exclude_none=True))
-        final_agent_card_to_use = _public_card
-        logger.info('\nUsing PUBLIC agent card for client initialization (default).')
-    except Exception as e:
-        logger.error(f'Failed to fetch public agent card: {e}') 
-        final_agent_card_to_use = None
-    return final_agent_card_to_use
-
-
-async def _call_remote_agent_with_client(a2a_client: A2AClient, query_text: str) -> str:
-    send_message_payload: dict[str, Any] = {
-        'message': {
-            'role': 'user',
-            'parts': [
-                {'kind': 'text', 'text': query_text}
-            ],
-            'messageId': uuid4().hex,
-        },
-    }
-    request = SendMessageRequest(id=str(uuid4()), params=MessageSendParams(**send_message_payload))
-    response = await a2a_client.send_message(request)
-    response_json = response.model_dump(mode='json', exclude_none=True)
-    resp_msg = response_json.get('params', {}).get('message', {})
-    parts = resp_msg.get('parts', [])
-    llm_texts = [p.get('text', '') for p in parts if isinstance(p, dict) and p.get('kind') == 'text']
-    llm_answer = '\n'.join(llm_texts).strip()
-    return llm_answer
+from agent_utils import get_agent_card, call_a2a_agent, AgentServerConfig, AgentServer, PromptType
+from dy_query_generation import QueryGenerator, ComplexityLevel
+from malt_env import BenchmarkEvaluator
 
 
 @dataclass
@@ -89,6 +49,7 @@ class MaltConfig:
     regenerate_query: bool = False
     start_index: int = 0
     end_index: int | None = None
+    agent_server_configs: list[AgentServerConfig] = field(default_factory=list)
 
 
 # Define a configuration for the benchmark
@@ -111,6 +72,42 @@ def parse_args():
     parser.add_argument('--end_index', type=int, default=None, help='End index of the queries to run (zero indexed).')
     return parser.parse_args()
 
+
+def fetch_benchmark_queries(app_config: MaltConfig, query_generator: QueryGenerator | None = None) -> list[dict]:
+    if query_generator is None:
+        query_generator = QueryGenerator()
+
+    benchmark_path = app_config.dynamic_benchmark_path
+    if app_config.regenerate_query:
+        logger.info("Generating new queries due to regenerate_query=True")
+        query_generator.generate_queries(num_each_type=app_config.num_queries, complexity_level=app_config.complexity_level)
+        query_generator.save_queries_to_file(benchmark_path)
+    else:
+        if not os.path.exists(benchmark_path):
+            logger.info(f"Benchmark file {benchmark_path} does not exist. Generating new queries...")
+            query_generator.generate_queries(num_each_type=app_config.num_queries, complexity_level=app_config.complexity_level)
+            query_generator.save_queries_to_file(benchmark_path)
+        else:
+            logger.info(f"Loading existing benchmark from {benchmark_path}")
+            query_generator.load_queries_from_file(benchmark_path)
+
+    # the format is {"messages": [{"question": "XXX."}, {"answer": "YYY"}]}
+    benchmark_data = []
+    with jsonlines.open(benchmark_path) as reader:
+        for obj in reader:
+            benchmark_data.append(obj['messages'])
+    
+    # Skip to start_index if specified
+    start_idx = max(app_config.start_index, 0)
+    end_idx = len(benchmark_data) if not isinstance(app_config.end_index, int) else min(app_config.end_index, len(benchmark_data))
+    if 0 < start_idx or end_idx < len(benchmark_data):
+        logger.info(f"Starting from query index {start_idx} (skipping {start_idx} queries) and ending at {end_idx} (processing {end_idx - start_idx} queries).")
+        if start_idx >= end_idx:
+            logger.warning(f"Warning: start_index {start_idx} is greater than or equal to end index ({len(benchmark_data)})")
+        benchmark_data = benchmark_data[start_idx:end_idx]
+
+    return benchmark_data
+
 # An example of how to use main.py with input args
 # Example usage:
 # python main.py --llm_agent_type AzureGPT4Agent --num_queries 2 --complexity_level level1 --output_dir logs/llm_agents --output_file gpt4o.jsonl --dynamic_benchmark_path data/benchmark_malt.jsonl
@@ -131,76 +128,53 @@ async def main(args):
 
     # dynamically generate or load existing queries
     query_generator = QueryGenerator()
-    benchmark_path = benchmark_config.dynamic_benchmark_path
-    
-    if benchmark_config.regenerate_query:
-        print("Generating new queries due to regenerate_query=True")
-        query_generator.generate_queries(num_each_type=benchmark_config.num_queries, complexity_level=benchmark_config.complexity_level)
-        query_generator.save_queries_to_file(benchmark_path)
-    else:
-        if not os.path.exists(benchmark_path):
-            print(f"Benchmark file {benchmark_path} does not exist. Generating new queries...")
-            query_generator.generate_queries(num_each_type=benchmark_config.num_queries, complexity_level=benchmark_config.complexity_level)
-            query_generator.save_queries_to_file(benchmark_path)
-        else:
-            print(f"Loading existing benchmark from {benchmark_path}")
-            query_generator.load_queries_from_file(benchmark_path)
 
     # Load the evaluator
     evaluator = BenchmarkEvaluator(graph_data=query_generator.malt_real_graph, llm_agent_type=benchmark_config.llm_model_type, 
                                    prompt_type=benchmark_config.prompt_type, model_path=benchmark_config.model_path)
 
     # the format is {"messages": [{"question": "XXX."}, {"answer": "YYY"}]}
-    benchmark_data = []
-    with jsonlines.open(benchmark_path) as reader:
-        for obj in reader:
-            benchmark_data.append(obj['messages'])
-    
-    # Skip to start_index if specified
-    start_idx = max(benchmark_config.start_index, 0)
-    end_idx = len(benchmark_data) if not isinstance(benchmark_config.end_index, int) else min(benchmark_config.end_index, len(benchmark_data))
-    if 0 < start_idx or end_idx < len(benchmark_data):
-        print(f"Starting from query index {start_idx} (skipping {start_idx} queries) and ending at {end_idx} (processing {end_idx - start_idx} queries).")
-        if start_idx >= end_idx:
-            print(f"Warning: start_index {start_idx} is greater than or equal to end index ({len(benchmark_data)})")
-            return
-        benchmark_data = benchmark_data[start_idx:end_idx]
+    benchmark_data = fetch_benchmark_queries(benchmark_config, query_generator=query_generator)
+
+    benchmark_config.agent_server_configs = [AgentServerConfig(name='hello_world', base_url='http://localhost:8000', prompt_type=PromptType.ZEROSHOT_BASE)]
     
     # for each object in the benchmark list, get the question and answer
-    for i, obj in enumerate(benchmark_data):
-        # Calculate actual index (for logging)
-        actual_idx = i + start_idx
-        print(f"Processing query {actual_idx} of {len(benchmark_data) + start_idx - 1}")
-        
-        # obj is a list of dictionaries, load question, answer, task_label from it
-        for item in obj:
-            if 'question' in item:
-                current_query = item['question']
-            elif 'answer' in item:
-                golden_answer = item['answer']
-            elif 'task_label' in item:
-                task_label = item['task_label']
-        
-        target_agent_url = "http://localhost:8000"  # Replace with the actual URL of the target agent
-        llm_answer = None
-        async with httpx.AsyncClient() as httpx_client:
-            agent_card = await get_agent_card(httpx_client, target_agent_url)
-            if agent_card is None:
-                err_msg = f'Unable to fetch agent card from {target_agent_url}.'
-                logger.error(err_msg)
-            client = A2AClient(httpx_client=httpx_client, agent_card=agent_card)
-            try:
-                llm_answer = await _call_remote_agent_with_client(client, current_query)
-            except Exception as e:
-                err_msg = f'Error calling remote agent: {e}'
-                logger.exception(err_msg)
-        ret, ground_truth_ret, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency, ret_graph_copy = evaluator.run_query_output(current_query, golden_answer, llm_answer=llm_answer)
-        evaluator.ground_truth_check(current_query, task_label, ret, ground_truth_ret, ret_graph_copy, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency, output_path)
+    async with httpx.AsyncClient(timeout=60) as httpx_client:
+        # Establish connections to the agents.
+        agents = [AgentServer(agent_server_config) for agent_server_config in benchmark_config.agent_server_configs]
+        _ = await asyncio.gather(*[agent.start(httpx_client) for agent in agents])
 
-        # have to sleep for Gemini API quota
-        if benchmark_config.llm_model_type == 'GoogleGeminiAgent':
-            time.sleep(10)
+        # Skip to start_index if specified
+        start_idx = max(benchmark_config.start_index, 0)
+        for i, obj in enumerate(benchmark_data):
+            # Calculate actual index (for logging)
+            actual_idx = i + start_idx
+            print(f"Processing query {actual_idx} of {len(benchmark_data) + start_idx - 1}")
+            
+            # obj is a list of dictionaries, load question, answer, task_label from it
+            for item in obj:
+                if 'question' in item:
+                    current_query = item['question']
+                elif 'answer' in item:
+                    golden_answer = item['answer']
+                elif 'task_label' in item:
+                    task_label = item['task_label']
+            
+            llm_answers = asyncio.as_completed([agent.handle_query(current_query) for agent in agents])
+            for answer in llm_answers:
+                llm_answer = await answer
+                logger.debug(f"LLM Answer: {llm_answer}")
+                ret, ground_truth_ret, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency, ret_graph_copy = evaluator.run_agent_output(current_query, golden_answer, llm_answer=llm_answer)
+                evaluator.ground_truth_check(current_query, task_label, ret, ground_truth_ret, ret_graph_copy, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency, output_path)
 
+            # have to sleep for Gemini API quota
+            if benchmark_config.llm_model_type == 'GoogleGeminiAgent':
+                time.sleep(10)
+
+        # Close the connections to the agents.
+        _ = await asyncio.gather(*[agent.stop() for agent in agents])
+
+    # TODO: Move the plotting code to a separate file.
     # Analyze the results
     # load the data from output_path
     results = []

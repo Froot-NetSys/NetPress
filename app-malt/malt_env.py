@@ -44,7 +44,7 @@ class BenchmarkEvaluator:
         # elif llm_agent_type == "ReAct_Agent":
         #     self.llm_agent = ReAct_Agent(prompt_type='base')
 
-    def run_query_output(self, current_query, golden_answer, llm_answer=None):
+    def run_agent_output(self, current_query, golden_answer, llm_answer=None):
         """Evaluate a single query against the graph.
 
         If `llm_answer` is provided, it will be used directly (for A2A workflows).
@@ -55,15 +55,6 @@ class BenchmarkEvaluator:
         G = self.graph_data
         
         start_time = time.time()
-
-        # If no external LLM answer provided, call the local agent if available
-        if llm_answer is None:
-            if self.llm_agent is None:
-                llm_answer = None
-            else:
-                llm_answer = self.llm_agent.call_agent(current_query)
-        print("LLM answer: ", llm_answer)
-
         if llm_answer is None:
             # Provide a useful error structure that's consistent with existing handling
             ret = {'type': 'error', 'data': 'No LLM response provided and no local LLM agent available.'}
