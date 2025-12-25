@@ -38,15 +38,15 @@ class PromptType(Enum):
 
 
 @dataclass
-class AgentServerConfig:
+class AgentClientConfig:
     name: str
     base_url: str
     prompt_type: PromptType = PromptType.FEWSHOT_COT
     http_kwargs: dict[str, Any] = field(default_factory=dict)
 
 
-class AgentServer:
-    def __init__(self, config: AgentServerConfig):
+class AgentClient:
+    def __init__(self, config: AgentClientConfig):
         self.config = config
 
     async def start(self, http_client: httpx.AsyncClient | None = None):

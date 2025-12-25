@@ -26,7 +26,7 @@ from a2a.types import (
     SendStreamingMessageRequest,
 )
 
-from agent_utils import AgentServerConfig, AgentServer, PromptType
+from agent_utils import AgentClientConfig, AgentClient, PromptType
 from dy_query_generation import QueryGenerator, ComplexityLevel
 from malt_env import BenchmarkEvaluator
 from text_utils import create_query_prompt, extract_code_output
@@ -45,7 +45,7 @@ class MaltConfig:
     regenerate_query: bool = False
     start_index: int = 0
     end_index: int | None = None
-    agent_server_configs: list[AgentServerConfig] = field(default_factory=list)
+    agent_client_configs: list[AgentClientConfig] = field(default_factory=list)
 
 
 # Define a configuration for the benchmark
@@ -116,13 +116,13 @@ async def evaluate_on_queries(config: MaltConfig):
     benchmark_data = fetch_benchmark_queries(config, query_generator=query_generator)
 
     # NOTE: This is hardcoded rn for testing.
-    config.agent_server_configs = [AgentServerConfig(name='azure_gpt', base_url='http://localhost:8000', prompt_type=PromptType.ZEROSHOT_BASE)]
+    config.agent_client_configs = [AgentClientConfig(name='azure_gpt', base_url='http://localhost:8000', prompt_type=PromptType.ZEROSHOT_BASE)]
     
     # for each object in the benchmark list, get the question and answer
-    # TODO: Separate clients (and context manager) for each agent server to facilitate different HTTP configs. For now, just remember to clean up underlying client.
+    # TODO: Separate clients (and context manager) for each agent to enable different HTTP configs. For now, just remember to clean up shared client.
     async with httpx.AsyncClient(timeout=60) as httpx_client:
         # Establish connections to the agents.
-        agents = [AgentServer(agent_server_config) for agent_server_config in config.agent_server_configs]
+        agents = [AgentClient(agent_client_config) for agent_client_config in config.agent_client_configs]
         _ = await asyncio.gather(*[agent.start(httpx_client) for agent in agents])
 
         # Skip to start_index if specified
