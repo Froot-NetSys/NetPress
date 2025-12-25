@@ -12,13 +12,11 @@ from solid_step_helper import getGraphData, clean_up_llm_output_func, check_list
     solid_step_add_node_to_graph, solid_step_counting_query, solid_step_remove_node_from_graph, \
     solid_step_list_child_nodes, solid_step_update_node_value, solid_step_rank_child_nodes, validate_llm_output
 import networkx as nx
-import jsonlines
 import json
 import re
 import time
 import sys
 import numpy as np
-# from llm_model import AzureGPT4Agent, GoogleGeminiAgent, QwenModel, QwenModel_finetuned, ReAct_Agent
 from error_check import SafetyChecker
 
 
@@ -32,17 +30,6 @@ class BenchmarkEvaluator:
         self.graph_data = graph_data
         self.llm_agent = None
         self.llm_agent_type = llm_agent_type
-        # Instantiate a local LLM agent only if an explicit supported type is provided
-        # if llm_agent_type == "AzureGPT4Agent":
-        #     self.llm_agent = AzureGPT4Agent(prompt_type)
-        # elif llm_agent_type == "GoogleGeminiAgent":
-        #     self.llm_agent = GoogleGeminiAgent(prompt_type)
-        # elif llm_agent_type == "Qwen2.5-72B-Instruct":
-        #     self.llm_agent = QwenModel(prompt_type)
-        # elif llm_agent_type == "QwenModel_finetuned":
-        #     self.llm_agent = QwenModel_finetuned(prompt_type, model_path=model_path)
-        # elif llm_agent_type == "ReAct_Agent":
-        #     self.llm_agent = ReAct_Agent(prompt_type='base')
 
     def run_agent_output(self, current_query, golden_answer, llm_answer=None):
         """Evaluate a single query against the graph.

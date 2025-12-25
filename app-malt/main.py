@@ -11,6 +11,7 @@ import json
 import argparse
 from scipy import stats
 import cattrs
+from cattrs.gen import make_dict_unstructure_fn, override
 from loguru import logger
 from dataclasses import dataclass, field
 from contextlib import ExitStack
@@ -35,10 +36,10 @@ from text_utils import create_query_prompt, extract_code_output
 @dataclass
 class MaltConfig:
     llm_model_type: str
-    model_path: str
-    prompt_type: str
-    num_queries: int
     complexity_level: list[ComplexityLevel]
+    model_path: str = 'model_dir'
+    prompt_type: PromptType = PromptType.ZEROSHOT_BASE
+    num_queries: int = 10
     output_dir: str = 'output'
     output_file: str = 'eval_results.jsonl'
     dynamic_benchmark_path: str = 'malt_benchmark.jsonl'
@@ -46,6 +47,11 @@ class MaltConfig:
     start_index: int = 0
     end_index: int | None = None
     agent_client_configs: list[AgentClientConfig] = field(default_factory=list)
+
+    def __post_init__(self):
+        names = [config.name for config in self.agent_client_configs]
+        if len(names) != len(set(names)):
+            raise ValueError(f'Bad agent client configuration. Different agents cannot have the same name.')
 
 
 # Define a configuration for the benchmark
@@ -57,7 +63,7 @@ def parse_args():
                                                                                                                       'QwenModel_finetuned', 
                                                                                                                       'ReAct_Agent'])
     parser.add_argument('--model_path', type=str, default=None, help='Path to the model (for local models/finetunes).')
-    parser.add_argument('--prompt_type', type=str, default='base', help='Choose the prompt type', choices=['base', 'cot', 'few_shot_basic', 'few_shot_semantic', 'few_shot_knn'])
+    parser.add_argument('--prompt_type', type=PromptType, default='base', help='Choose the prompt type', choices=[pt for pt in PromptType])
     parser.add_argument('--num_queries', type=int, default=10, help='Number of queries to generate for each type')
     parser.add_argument('--complexity_level', nargs='+', default=['level1', 'level2'], help='Complexity level of queries to generate')
     parser.add_argument('--output_dir', type=str, default='logs/llm_agents', help='Directory to save output JSONL file')
@@ -115,22 +121,35 @@ async def evaluate_on_queries(config: MaltConfig):
     # the format is {"messages": [{"question": "XXX."}, {"answer": "YYY"}]}
     benchmark_data = fetch_benchmark_queries(config, query_generator=query_generator)
 
-    # NOTE: This is hardcoded rn for testing.
-    config.agent_client_configs = [AgentClientConfig(name='azure_gpt', base_url='http://localhost:8000', prompt_type=PromptType.ZEROSHOT_BASE)]
+    # Helper function to associate awaitable with a key.
+    async def key_value(key, value):
+        return key, await value
     
     # for each object in the benchmark list, get the question and answer
-    # TODO: Separate clients (and context manager) for each agent to enable different HTTP configs. For now, just remember to clean up shared client.
-    async with httpx.AsyncClient(timeout=60) as httpx_client:
+    # TODO: Separate http clients (and context manager) for each agent to enable different HTTP configs. For now, just remember to clean up shared client.
+    async with httpx.AsyncClient() as httpx_client:
         # Establish connections to the agents.
-        agents = [AgentClient(agent_client_config) for agent_client_config in config.agent_client_configs]
-        _ = await asyncio.gather(*[agent.start(httpx_client) for agent in agents])
+        clients = [AgentClient(agent_client_config) for agent_client_config in config.agent_client_configs]
+        agents: list[AgentClient] = []
+        for client in asyncio.as_completed([c.start(httpx_client) for c in clients]):
+            try:
+                agent = await client
+                agents.append(agent)
+            except Exception as e:
+                logger.debug(f'Connection failed: {e}')
+                logger.warning(f'Failed to connect to agent server. Skipping...')
+        if not agents:
+            raise ConnectionError('Could not connect to any agent servers. Aborting assessment.')
+        
+        # Serialize agent info without any potentially sensitive info (e.g. HTTP headers).
+        name_to_config_map = {agent.config.name: agent.config.serialize_omit_secrets() for agent in agents}
 
         # Skip to start_index if specified
         start_idx = max(config.start_index, 0)
         for i, obj in enumerate(benchmark_data):
             # Calculate actual index (for logging)
             actual_idx = i + start_idx
-            print(f"Processing query {actual_idx} of {len(benchmark_data) + start_idx - 1}")
+            logger.info(f"Processing query {actual_idx} of {len(benchmark_data) + start_idx - 1}")
             
             # obj is a list of dictionaries, load question, answer, task_label from it
             for item in obj:
@@ -145,14 +164,16 @@ async def evaluate_on_queries(config: MaltConfig):
             llm_answers = []
             for agent in agents:
                 prompt = create_query_prompt(current_query, agent.config.prompt_type)
-                llm_answers.append(agent.handle_query(prompt))
-            for answer in asyncio.as_completed(llm_answers):
-                llm_answer = await answer
+                fut = key_value(agent.config.name, agent.handle_query(prompt))
+                llm_answers.append(fut)
+            for response in asyncio.as_completed(llm_answers):
+                agent_name, llm_answer = await response
                 code = extract_code_output(llm_answer)
                 logger.debug(f"LLM Answer: \n{code}")
                 ret, ground_truth_ret, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency, ret_graph_copy = evaluator.run_agent_output(current_query, golden_answer, llm_answer=code)
-                yield evaluator.ground_truth_check(current_query, task_label, ret, ground_truth_ret, ret_graph_copy, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency)
-
+                result_object = evaluator.ground_truth_check(current_query, task_label, ret, ground_truth_ret, ret_graph_copy, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency)
+                result_object['agent_info'] = name_to_config_map[agent_name]
+                yield result_object
 
 # An example of how to use main.py with input args
 # Example usage:
@@ -174,15 +195,20 @@ async def main(args):
 
     eval_results = evaluate_on_queries(benchmark_config)
 
+    # Collect results and write to file.
+    results = []
+    try:
+        with jsonlines.open(output_path, mode='a') as writer:
+            async for obj in eval_results:
+                results.append(obj)
+                writer.write(obj)
+    except Exception as e:
+        logger.debug(f'Assessment failure reason: {e}')
+        logger.error("Agent assessment failed to proceed. Aborting.")
+        return
+
     # TODO: Move the plotting code to a separate file.
     # Analyze the results
-    # load the data from output_path
-    results = []
-    with jsonlines.open(output_path, mode='a') as writer:
-        async for obj in eval_results:
-            results.append(obj)
-            writer.write(obj)
-
     timestamp = time.strftime("%Y%m%d_%H%M%S")
 
     # group the results by task label

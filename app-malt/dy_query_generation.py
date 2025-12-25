@@ -9,9 +9,9 @@ from enum import Enum
 
 
 class ComplexityLevel(Enum):
-    LEVEL_1 = 'level1'
-    LEVEL_2 = 'level2'
-    LEVEL_3 = 'level3'
+    LEVEL1 = 'level1'
+    LEVEL2 = 'level2'
+    LEVEL3 = 'level3'
 
 
 class QueryGenerator:

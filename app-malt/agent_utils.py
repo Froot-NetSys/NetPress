@@ -5,11 +5,15 @@ from typing import Any
 from enum import Enum
 import json
 from dataclasses import dataclass, field
+import uuid
+import cattrs
+from cattrs.gen import make_dict_unstructure_fn, override
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.utils import new_agent_text_message, new_data_artifact, new_task
 from a2a.client import A2ACardResolver, ClientFactory, ClientConfig, BaseClient, Client, A2AClient
+from a2a.client.middleware import ClientCallContext
 from a2a.types import (
     MessageSendParams,
     MessageSendConfiguration,
@@ -30,6 +34,9 @@ from a2a.utils.constants import (
 )
 
 
+DEFAULT_HTTP_TIMEOUT_S = 60
+
+
 class PromptType(Enum):
     ZEROSHOT_BASE = "zeroshot_base"
     FEWSHOT_BASE = "fewshot_base"
@@ -39,10 +46,17 @@ class PromptType(Enum):
 
 @dataclass
 class AgentClientConfig:
-    name: str
     base_url: str
+    name: str
     prompt_type: PromptType = PromptType.FEWSHOT_COT
-    http_kwargs: dict[str, Any] = field(default_factory=dict)
+    http_kwargs: dict[str, Any] = field(default_factory=lambda: dict(timeout=DEFAULT_HTTP_TIMEOUT_S))
+
+    def serialize_omit_secrets(self) -> dict[str, Any]:
+        # Serialize info for each agent without any potentially sensitive info (e.g. HTTP headers).
+        converter = cattrs.Converter()
+        exclude_hook = make_dict_unstructure_fn(AgentClientConfig, converter, http_kwargs=override(omit=True))
+        converter.register_unstructure_hook(AgentClientConfig, exclude_hook)
+        return converter.unstructure(self)
 
 
 class AgentClient:
@@ -50,9 +64,9 @@ class AgentClient:
         self.config = config
 
     async def start(self, http_client: httpx.AsyncClient | None = None):
-        logger.info("Starting Agent Server...")
+        logger.info(f'Starting agent client for agent "{self.config.name}" connected to {self.config.base_url}')
         # Initialize the A2AClient with the provided configuration
-        self.http_client = httpx.AsyncClient(timeout=60) if not http_client else http_client
+        self.http_client = httpx.AsyncClient() if not http_client else http_client
 
         client_config = ClientConfig(
             httpx_client=self.http_client,
@@ -60,10 +74,11 @@ class AgentClient:
         )
         factory = ClientFactory(client_config)
         # Fetch and set the agent card.
-        self.agent_card = await get_agent_card(self.http_client, self.config.base_url)
-        self.a2a_client: BaseClient = factory.create(self.agent_card)
+        self.agent_card = await fetch_agent_card(self.http_client, self.config.base_url)
+        self.a2a_client: BaseClient = factory.create(self.agent_card) # type: ignore
         # Start the A2AClient
         logger.info("Agent Server started successfully.")
+        return self
 
     async def handle_query(self, prompt: str) -> str | None:
         try:
@@ -75,33 +90,31 @@ class AgentClient:
         return response
 
 
-async def get_agent_card(http_client: httpx.AsyncClient, base_url: str):
+async def fetch_agent_card(http_client: httpx.AsyncClient, base_url: str):
     resolver = A2ACardResolver(
         httpx_client=http_client,
         base_url=base_url,
         # agent_card_path uses default, extended_agent_card_path also uses default
     )
-    try:
-        logger.info(f'Attempting to fetch public agent card from: {base_url}{AGENT_CARD_WELL_KNOWN_PATH}')
-        public_card = await resolver.get_agent_card()  # Fetches from default public path
-        logger.info('Successfully fetched public agent card:')
-        logger.debug(public_card.model_dump_json(indent=2, exclude_none=True))
-        final_agent_card_to_use = public_card
-    except Exception as e:
-        logger.error(f'Failed to fetch public agent card: {e}') 
-        final_agent_card_to_use = None
+    logger.info(f'Attempting to fetch public agent card from: {base_url}{AGENT_CARD_WELL_KNOWN_PATH}')
+    public_card = await resolver.get_agent_card()  # Fetches from default public path
+    logger.info('Successfully fetched public agent card:')
+    logger.info(public_card.model_dump_json(indent=2, exclude_none=True))
+    final_agent_card_to_use = public_card
     return final_agent_card_to_use
 
 
 async def call_a2a_agent(a2a_client: BaseClient, query_text: str, http_kwargs: dict = {}) -> str | None:
     message = create_message(role=Role.user, text=query_text)
-    # request = SendMessageRequest(id=str(uuid4()), params=MessageSendParams(**send_message_payload))
+    call_context = ClientCallContext(state=dict(http_kwargs=http_kwargs))
     
     # if streaming == False, only one event is generated
     llm_answer = None
     last_event = None
     response_json = None
-    async for event in a2a_client.send_message(message):
+    i = 0
+    async for event in a2a_client.send_message(message, context=call_context):
+        logger.trace(f'Event Stream (i={i}): \n{event}')
         last_event = event
     match last_event:
         case Message() as msg:
@@ -114,7 +127,7 @@ async def call_a2a_agent(a2a_client: BaseClient, query_text: str, http_kwargs: d
         case _:
             pass
     if response_json:
-        logger.debug(f'Received response from agent: {response_json}')
+        logger.debug(f'Received response from agent: \n{response_json}')
     else:
         logger.warning(f'Agent endpoint did not respond with data.')
     return llm_answer
@@ -144,7 +157,7 @@ def _extract_text_from_task(task: Task | dict, separator='\n') -> str | None:
     history = task.history if task.history else []
     for msg in reversed(history):
         if msg.role == Role.agent:  
-            text = _extract_text_from_message(msg, separator=separator)
+            text = _merge_parts(msg.parts, separator=separator)
             if text:
                 return text
     return None
