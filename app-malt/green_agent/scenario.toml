@@ -1,0 +1,20 @@
+[green_agent]
+endpoint = "http://127.0.0.1:9999"
+
+[[participants]]
+role = "network_operator"
+endpoint = "http://127.0.0.1:8000"
+
+[config]
+llm_model_type = "AzureGPT4Agent" 
+prompt_type = "zeroshot_base" 
+num_queries = 1 
+complexity_level = ["level1", "level2"]
+output_dir = "/home/ericwang/NetPress/app-malt/output" 
+output_file = "test_output.jsonl" 
+dynamic_benchmark_path = "/home/ericwang/NetPress/app-malt/data/test.jsonl" 
+
+[[config.agent_client_configs]]
+name = "azure-gpt"
+base_url = "http://127.0.0.1:8000"
+prompt_type = "zeroshot_cot"
