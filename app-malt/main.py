@@ -13,8 +13,7 @@ from scipy import stats
 import cattrs
 from loguru import logger
 from dataclasses import dataclass, field
-from uuid import uuid4
-from typing import Any
+from contextlib import ExitStack
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
@@ -26,14 +25,11 @@ from a2a.types import (
     SendMessageRequest,
     SendStreamingMessageRequest,
 )
-from a2a.utils.constants import (
-    AGENT_CARD_WELL_KNOWN_PATH,
-    EXTENDED_AGENT_CARD_PATH,
-)
 
-from agent_utils import get_agent_card, call_a2a_agent, AgentServerConfig, AgentServer, PromptType
+from agent_utils import AgentServerConfig, AgentServer, PromptType
 from dy_query_generation import QueryGenerator, ComplexityLevel
 from malt_env import BenchmarkEvaluator
+from text_utils import create_query_prompt, extract_code_output
 
 
 @dataclass
@@ -108,6 +104,56 @@ def fetch_benchmark_queries(app_config: MaltConfig, query_generator: QueryGenera
 
     return benchmark_data
 
+
+async def evaluate_on_queries(config: MaltConfig):
+    # dynamically generate or load existing queries
+    query_generator = QueryGenerator()
+    # Load the evaluator
+    evaluator = BenchmarkEvaluator(graph_data=query_generator.malt_real_graph, llm_agent_type=config.llm_model_type, 
+                                   prompt_type=config.prompt_type, model_path=config.model_path)
+
+    # the format is {"messages": [{"question": "XXX."}, {"answer": "YYY"}]}
+    benchmark_data = fetch_benchmark_queries(config, query_generator=query_generator)
+
+    # NOTE: This is hardcoded rn for testing.
+    config.agent_server_configs = [AgentServerConfig(name='azure_gpt', base_url='http://localhost:8000', prompt_type=PromptType.ZEROSHOT_BASE)]
+    
+    # for each object in the benchmark list, get the question and answer
+    # TODO: Separate clients (and context manager) for each agent server to facilitate different HTTP configs. For now, just remember to clean up underlying client.
+    async with httpx.AsyncClient(timeout=60) as httpx_client:
+        # Establish connections to the agents.
+        agents = [AgentServer(agent_server_config) for agent_server_config in config.agent_server_configs]
+        _ = await asyncio.gather(*[agent.start(httpx_client) for agent in agents])
+
+        # Skip to start_index if specified
+        start_idx = max(config.start_index, 0)
+        for i, obj in enumerate(benchmark_data):
+            # Calculate actual index (for logging)
+            actual_idx = i + start_idx
+            print(f"Processing query {actual_idx} of {len(benchmark_data) + start_idx - 1}")
+            
+            # obj is a list of dictionaries, load question, answer, task_label from it
+            for item in obj:
+                if 'question' in item:
+                    current_query = item['question']
+                elif 'answer' in item:
+                    golden_answer = item['answer']
+                elif 'task_label' in item:
+                    task_label = item['task_label']
+            
+            # Query the LLM agent(s) and evaluate the results.
+            llm_answers = []
+            for agent in agents:
+                prompt = create_query_prompt(current_query, agent.config.prompt_type)
+                llm_answers.append(agent.handle_query(prompt))
+            for answer in asyncio.as_completed(llm_answers):
+                llm_answer = await answer
+                code = extract_code_output(llm_answer)
+                logger.debug(f"LLM Answer: \n{code}")
+                ret, ground_truth_ret, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency, ret_graph_copy = evaluator.run_agent_output(current_query, golden_answer, llm_answer=code)
+                yield evaluator.ground_truth_check(current_query, task_label, ret, ground_truth_ret, ret_graph_copy, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency)
+
+
 # An example of how to use main.py with input args
 # Example usage:
 # python main.py --llm_agent_type AzureGPT4Agent --num_queries 2 --complexity_level level1 --output_dir logs/llm_agents --output_file gpt4o.jsonl --dynamic_benchmark_path data/benchmark_malt.jsonl
@@ -126,61 +172,16 @@ async def main(args):
         with open(output_path, 'w') as f:
             pass
 
-    # dynamically generate or load existing queries
-    query_generator = QueryGenerator()
-
-    # Load the evaluator
-    evaluator = BenchmarkEvaluator(graph_data=query_generator.malt_real_graph, llm_agent_type=benchmark_config.llm_model_type, 
-                                   prompt_type=benchmark_config.prompt_type, model_path=benchmark_config.model_path)
-
-    # the format is {"messages": [{"question": "XXX."}, {"answer": "YYY"}]}
-    benchmark_data = fetch_benchmark_queries(benchmark_config, query_generator=query_generator)
-
-    benchmark_config.agent_server_configs = [AgentServerConfig(name='hello_world', base_url='http://localhost:8000', prompt_type=PromptType.ZEROSHOT_BASE)]
-    
-    # for each object in the benchmark list, get the question and answer
-    async with httpx.AsyncClient(timeout=60) as httpx_client:
-        # Establish connections to the agents.
-        agents = [AgentServer(agent_server_config) for agent_server_config in benchmark_config.agent_server_configs]
-        _ = await asyncio.gather(*[agent.start(httpx_client) for agent in agents])
-
-        # Skip to start_index if specified
-        start_idx = max(benchmark_config.start_index, 0)
-        for i, obj in enumerate(benchmark_data):
-            # Calculate actual index (for logging)
-            actual_idx = i + start_idx
-            print(f"Processing query {actual_idx} of {len(benchmark_data) + start_idx - 1}")
-            
-            # obj is a list of dictionaries, load question, answer, task_label from it
-            for item in obj:
-                if 'question' in item:
-                    current_query = item['question']
-                elif 'answer' in item:
-                    golden_answer = item['answer']
-                elif 'task_label' in item:
-                    task_label = item['task_label']
-            
-            llm_answers = asyncio.as_completed([agent.handle_query(current_query) for agent in agents])
-            for answer in llm_answers:
-                llm_answer = await answer
-                logger.debug(f"LLM Answer: {llm_answer}")
-                ret, ground_truth_ret, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency, ret_graph_copy = evaluator.run_agent_output(current_query, golden_answer, llm_answer=llm_answer)
-                evaluator.ground_truth_check(current_query, task_label, ret, ground_truth_ret, ret_graph_copy, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency, output_path)
-
-            # have to sleep for Gemini API quota
-            if benchmark_config.llm_model_type == 'GoogleGeminiAgent':
-                time.sleep(10)
-
-        # Close the connections to the agents.
-        _ = await asyncio.gather(*[agent.stop() for agent in agents])
+    eval_results = evaluate_on_queries(benchmark_config)
 
     # TODO: Move the plotting code to a separate file.
     # Analyze the results
     # load the data from output_path
     results = []
-    with jsonlines.open(output_path) as reader:
-        for obj in reader:
+    with jsonlines.open(output_path, mode='a') as writer:
+        async for obj in eval_results:
             results.append(obj)
+            writer.write(obj)
 
     timestamp = time.strftime("%Y%m%d_%H%M%S")
 

@@ -125,12 +125,13 @@ class BenchmarkEvaluator:
 
         return ret, ground_truth_ret, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency, ret_graph_copy
 
-    def ground_truth_check(self, requestData, task_label, ret, ground_truth_ret, ret_graph_copy, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency, output_path):
+    def ground_truth_check(self, requestData, task_label, ret, ground_truth_ret, ret_graph_copy, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency):
         # Helper function to log results and avoid code duplication
         def log_result(is_correct):
             log_func = self.result_log_correct if is_correct else self.result_log_wrong
-            log_func(requestData, task_label, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, 
-                    query_run_latency, ground_truth_ret, ret, output_path)
+            res = log_func(requestData, task_label, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, 
+                    query_run_latency, ground_truth_ret, ret)
+            return res
 
         # Convert numeric data to strings for text type
         if ground_truth_ret['type'] == 'text':
@@ -151,17 +152,17 @@ class BenchmarkEvaluator:
         }
 
         # Get the appropriate comparison strategy and execute it
-        compare_func = comparison_strategies.get(ground_truth_ret['type'])
-        if compare_func:
-            # Sometimes LLM output doesn't fully match the expected data type, so we need this.
-            try:
-                is_correct = compare_func(ground_truth_ret['data'], ret['data'])
-                log_result(is_correct)
-            except:
-                print("Error during comparison: ", traceback.format_exc())
-                log_result(False)
+        # Sometimes LLM output doesn't fully match the expected data type, so we need this.
+        try:
+            compare_func = comparison_strategies[ground_truth_ret['type']]
+            is_correct = compare_func(ground_truth_ret['data'], ret['data'])
+            res = log_result(is_correct)
+        except:
+            print("Error during comparison: ", traceback.format_exc())
+            res = log_result(False)
+        return res
 
-    def result_log_wrong(self, current_query, task_label, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency, ground_truth_ret, ret, output_path):
+    def result_log_wrong(self, current_query, task_label, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency, ground_truth_ret, ret):
         result_object = {
             "Query": current_query,
             "Label": task_label,
@@ -197,14 +198,10 @@ class BenchmarkEvaluator:
             result_object["Verifier-Error"] = verifier_error
         if not gt_verifier_results:
             result_object["GT-Verifier-Error"] = gt_verifier_error
-
-        # Save result_object into a JsonLine file
-        with jsonlines.open(output_path, mode='a') as writer:
-            writer.write(result_object)
         
-        return None
+        return result_object
 
-    def result_log_correct(self, current_query, task_label, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency, ground_truth_ret, ret, output_path):
+    def result_log_correct(self, current_query, task_label, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency, ground_truth_ret, ret):
         result_object = {
             "Query": current_query,
             "Label": task_label,
@@ -225,10 +222,6 @@ class BenchmarkEvaluator:
         if not gt_verifier_results:
             result_object["GT-Verifier-Error"] = gt_verifier_error
         
-        # Save result_object into a JsonLine file
-        with jsonlines.open(output_path, mode='a') as writer:
-            writer.write(result_object)
-        
-        return None
+        return result_object
 
 
