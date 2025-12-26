@@ -154,7 +154,7 @@ if __name__ == "__main__":
     public_agent_card = AgentCard(
         name='NetArena MALT Evaluation Agent',
         description='An LLM chatbot powered by Azure and LiteLLM.',
-        url=f'http://localhost:{port}/',
+        url=f'http://localhost:{args.port}/',
         version='1.0.0',
         default_input_modes=['data'],
         default_output_modes=['data'],
