@@ -1,31 +1,15 @@
 import numpy as np
-import pandas as pd
 import jsonlines
-import random
 import os
 import asyncio
 import httpx
 import time
 import matplotlib.pyplot as plt
-import json
 import argparse
 from scipy import stats
 import cattrs
-from cattrs.gen import make_dict_unstructure_fn, override
 from loguru import logger
 from dataclasses import dataclass, field
-from contextlib import ExitStack
-
-from a2a.server.agent_execution import AgentExecutor, RequestContext
-from a2a.server.events import EventQueue
-from a2a.utils import new_agent_text_message, new_data_artifact, new_task
-from a2a.client import A2ACardResolver, A2AClient
-from a2a.types import (
-    AgentCard,
-    MessageSendParams,
-    SendMessageRequest,
-    SendStreamingMessageRequest,
-)
 
 from netarena.agent_client import AgentClientConfig, AgentClient, PromptType
 from dy_query_generation import QueryGenerator, ComplexityLevel
@@ -38,9 +22,7 @@ class MaltConfig:
     """
     Structured container for the app settings.
     """
-    llm_model_type: str
     complexity_level: list[ComplexityLevel] = field(default_factory=lambda: [ComplexityLevel.LEVEL1, ComplexityLevel.LEVEL2])
-    model_path: str = 'model_dir'
     prompt_type: PromptType = PromptType.ZEROSHOT_BASE
     num_queries: int = 10
     output_dir: str = 'output'
@@ -60,12 +42,6 @@ class MaltConfig:
 # Define a configuration for the benchmark
 def parse_args():
     parser = argparse.ArgumentParser(description="Benchmark Configuration")
-    parser.add_argument('--llm_model_type', type=str, default='AzureGPT4Agent', help='Choose the LLM agent', choices=['AzureGPT4Agent', 
-                                                                                                                      'GoogleGeminiAgent',     
-                                                                                                                      'Qwen2.5-72B-Instruct', 
-                                                                                                                      'QwenModel_finetuned', 
-                                                                                                                      'ReAct_Agent'])
-    parser.add_argument('--model_path', type=str, default=None, help='Path to the model (for local models/finetunes).')
     parser.add_argument('--prompt_type', type=PromptType, default='base', help='Choose the prompt type', choices=[pt for pt in PromptType])
     parser.add_argument('--num_queries', type=int, default=10, help='Number of queries to generate for each type')
     parser.add_argument('--complexity_level', nargs='+', default=['level1', 'level2'], help='Complexity level of queries to generate')
@@ -122,8 +98,7 @@ async def evaluate_on_queries(config: MaltConfig):
     # dynamically generate or load existing queries
     query_generator = QueryGenerator()
     # Load the evaluator
-    evaluator = BenchmarkEvaluator(graph_data=query_generator.malt_real_graph, llm_agent_type=config.llm_model_type, 
-                                   prompt_type=config.prompt_type, model_path=config.model_path)
+    evaluator = BenchmarkEvaluator(graph_data=query_generator.malt_real_graph)
 
     # the format is {"messages": [{"question": "XXX."}, {"answer": "YYY"}]}
     benchmark_data = fetch_benchmark_queries(config, query_generator=query_generator)

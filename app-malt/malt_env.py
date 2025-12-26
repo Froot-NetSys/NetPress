@@ -26,10 +26,8 @@ OUTPUT_JSONL_FILE = 'gpt4.jsonl'
 
 
 class BenchmarkEvaluator:
-    def __init__(self, graph_data, llm_agent_type=None, prompt_type=None, model_path=None):
+    def __init__(self, graph_data):
         self.graph_data = graph_data
-        self.llm_agent = None
-        self.llm_agent_type = llm_agent_type
 
     def run_agent_output(self, current_query, golden_answer, llm_answer=None):
         """Evaluate a single query against the graph.
