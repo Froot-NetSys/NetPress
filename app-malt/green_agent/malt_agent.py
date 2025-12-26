@@ -4,6 +4,7 @@ import uuid
 from typing import Any
 import sys
 import os
+import argparse
 # Include path to user libraries.
 file_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.abspath(os.path.dirname(file_dir)))
@@ -131,10 +132,18 @@ class GreenExecutor(AgentExecutor):
         self, context: RequestContext, event_queue: EventQueue
     ) -> Task | None:
         raise ServerError(error=UnsupportedOperationError())
+    
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Expose the NetArena benchmark as an A2A server.")
+    parser.add_argument('--host', type=str, default='127.0.0.1', help='Host to expose the server on.')
+    parser.add_argument('--port', type=int, default=9999, help='Port to expose the server on.')
+    args = parser.parse_args()
+    return args
 
 
 if __name__ == "__main__":
-    port = 9999
+    args = parse_args()
     skill = AgentSkill(
         id='malt_eval',
         name='MALT Evaluation',
@@ -163,4 +172,4 @@ if __name__ == "__main__":
         http_handler=request_handler,
     )
 
-    uvicorn.run(server.build(), host='0.0.0.0', port=port)
+    uvicorn.run(server.build(), host=args.host, port=args.port)
