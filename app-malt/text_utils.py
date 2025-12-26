@@ -2,7 +2,7 @@ from loguru import logger
 from dataclasses import dataclass, field
 import re
 
-from agent_utils import PromptType
+from netarena.agent_client import PromptType
 
 
 BASE_PROMPT = """

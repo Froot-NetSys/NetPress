@@ -27,7 +27,7 @@ from a2a.types import (
     SendStreamingMessageRequest,
 )
 
-from agent_utils import AgentClientConfig, AgentClient, PromptType
+from netarena.agent_client import AgentClientConfig, AgentClient, PromptType
 from dy_query_generation import QueryGenerator, ComplexityLevel
 from malt_env import BenchmarkEvaluator
 from text_utils import create_query_prompt, extract_code_output
@@ -35,8 +35,11 @@ from text_utils import create_query_prompt, extract_code_output
 
 @dataclass
 class MaltConfig:
+    """
+    Structured container for the app settings.
+    """
     llm_model_type: str
-    complexity_level: list[ComplexityLevel]
+    complexity_level: list[ComplexityLevel] = field(default_factory=lambda: [ComplexityLevel.LEVEL1, ComplexityLevel.LEVEL2])
     model_path: str = 'model_dir'
     prompt_type: PromptType = PromptType.ZEROSHOT_BASE
     num_queries: int = 10
@@ -112,6 +115,10 @@ def fetch_benchmark_queries(app_config: MaltConfig, query_generator: QueryGenera
 
 
 async def evaluate_on_queries(config: MaltConfig):
+    """
+    Handles querying each agent on the generated benchmark and evaluating the LLM generated code.
+    Yields the evaluation results for each query along with information about the agent evaluated.
+    """
     # dynamically generate or load existing queries
     query_generator = QueryGenerator()
     # Load the evaluator
@@ -161,6 +168,7 @@ async def evaluate_on_queries(config: MaltConfig):
                     task_label = item['task_label']
             
             # Query the LLM agent(s) and evaluate the results.
+            # TODO: Make this capable of yielding from multiple agents concurrently (instead of waiting for each agent to finish).
             llm_answers = []
             for agent in agents:
                 prompt = create_query_prompt(current_query, agent.config.prompt_type)
@@ -168,6 +176,9 @@ async def evaluate_on_queries(config: MaltConfig):
                 llm_answers.append(fut)
             for response in asyncio.as_completed(llm_answers):
                 agent_name, llm_answer = await response
+                if llm_answer is None:
+                    logger.warning(f'Could not obtain response from agent "{agent_name}" for query {actual_idx}. Skipping...')
+                    continue
                 code = extract_code_output(llm_answer)
                 logger.debug(f"LLM Answer: \n{code}")
                 ret, ground_truth_ret, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency, ret_graph_copy = evaluator.run_agent_output(current_query, golden_answer, llm_answer=code)

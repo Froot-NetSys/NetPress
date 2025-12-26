@@ -31,7 +31,7 @@ from a2a.utils import new_agent_text_message, new_task
 from a2a.utils.errors import ServerError
 
 from main import evaluate_on_queries, MaltConfig
-from agent_utils import AgentClientConfig, PromptType
+from netarena.agent_client import AgentClientConfig, PromptType
 from cattrs import structure
 
 

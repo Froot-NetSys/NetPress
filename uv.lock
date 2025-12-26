@@ -1284,7 +1284,7 @@ wheels = [
 [[package]]
 name = "netpress"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "a2a-sdk", extra = ["http-server"] },
     { name = "attrs" },

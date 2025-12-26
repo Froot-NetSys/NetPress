@@ -38,6 +38,9 @@ DEFAULT_HTTP_TIMEOUT_S = 60
 
 
 class PromptType(Enum):
+    """
+    Represents a prompting strategy used for an LLM agent (e.g. zero-shot chain-of-thought).
+    """
     ZEROSHOT_BASE = "zeroshot_base"
     FEWSHOT_BASE = "fewshot_base"
     ZEROSHOT_COT = "zeroshot_cot"
@@ -46,12 +49,18 @@ class PromptType(Enum):
 
 @dataclass
 class AgentClientConfig:
+    """
+    Contains information and settings for an AgentClient (e.g. agent endpoint, HTTP options, etc).
+    """
     base_url: str
     name: str
     prompt_type: PromptType = PromptType.FEWSHOT_COT
     http_kwargs: dict[str, Any] = field(default_factory=lambda: dict(timeout=DEFAULT_HTTP_TIMEOUT_S))
 
     def serialize_omit_secrets(self) -> dict[str, Any]:
+        """
+        Serialize to JSON while omitting sensitive information (e.g. HTTP arguments).
+        """
         # Serialize info for each agent without any potentially sensitive info (e.g. HTTP headers).
         converter = cattrs.Converter()
         exclude_hook = make_dict_unstructure_fn(AgentClientConfig, converter, http_kwargs=override(omit=True))
@@ -60,6 +69,10 @@ class AgentClientConfig:
 
 
 class AgentClient:
+    """
+    An async client that handles making text completion requests to an (LLM-powered) A2A-compatible agent.
+    """
+
     def __init__(self, config: AgentClientConfig):
         self.config = config
 
@@ -74,23 +87,26 @@ class AgentClient:
         )
         factory = ClientFactory(client_config)
         # Fetch and set the agent card.
-        self.agent_card = await fetch_agent_card(self.http_client, self.config.base_url)
+        self.agent_card = await _fetch_agent_card(self.http_client, self.config.base_url)
         self.a2a_client: BaseClient = factory.create(self.agent_card) # type: ignore
         # Start the A2AClient
         logger.info("Agent Server started successfully.")
         return self
 
     async def handle_query(self, prompt: str) -> str | None:
+        """
+        Queries the underlying agent with the given prompt. Returns None if the client fails to communicate.
+        """
         try:
             logger.debug(f"Processing query with prompt: {prompt}")
-            response = await call_a2a_agent(self.a2a_client, prompt, http_kwargs=self.config.http_kwargs)
+            response = await _call_a2a_agent(self.a2a_client, prompt, http_kwargs=self.config.http_kwargs)
         except Exception as e:
             logger.error(f"Error processing query: {e}")
             response = None
         return response
 
 
-async def fetch_agent_card(http_client: httpx.AsyncClient, base_url: str):
+async def _fetch_agent_card(http_client: httpx.AsyncClient, base_url: str):
     resolver = A2ACardResolver(
         httpx_client=http_client,
         base_url=base_url,
@@ -104,8 +120,8 @@ async def fetch_agent_card(http_client: httpx.AsyncClient, base_url: str):
     return final_agent_card_to_use
 
 
-async def call_a2a_agent(a2a_client: BaseClient, query_text: str, http_kwargs: dict = {}) -> str | None:
-    message = create_message(role=Role.user, text=query_text)
+async def _call_a2a_agent(a2a_client: BaseClient, query_text: str, http_kwargs: dict = {}) -> str | None:
+    message = _create_message(role=Role.user, text=query_text)
     call_context = ClientCallContext(state=dict(http_kwargs=http_kwargs))
     
     # if streaming == False, only one event is generated
@@ -173,7 +189,7 @@ def _merge_parts(parts: list[Part], separator='\n') -> str:
     return separator.join(chunks)
 
 
-def create_message(*, role: Role = Role.user, text: str, context_id: str | None = None) -> Message:
+def _create_message(*, role: Role = Role.user, text: str, context_id: str | None = None) -> Message:
     return Message(
         kind="message",
         role=role,
