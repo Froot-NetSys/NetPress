@@ -150,13 +150,15 @@ async def evaluate_on_queries(config: MaltConfig):
                 fut = key_value(agent.config.name, agent.handle_query(prompt))
                 llm_answers.append(fut)
             for response in asyncio.as_completed(llm_answers):
+                start_time = time.perf_counter()
                 agent_name, llm_answer = await response
+                query_run_latency = time.perf_counter() - start_time
                 if llm_answer is None:
                     logger.warning(f'Could not obtain response from agent "{agent_name}" for query {actual_idx}. Skipping...')
                     continue
                 code = extract_code_output(llm_answer)
                 logger.debug(f"LLM Answer: \n{code}")
-                ret, ground_truth_ret, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency, ret_graph_copy = evaluator.run_agent_output(current_query, golden_answer, llm_answer=code)
+                ret, ground_truth_ret, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, ret_graph_copy = evaluator.run_agent_output(current_query, golden_answer, llm_answer=code)
                 result_object = evaluator.ground_truth_check(current_query, task_label, ret, ground_truth_ret, ret_graph_copy, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency)
                 result_object['agent_info'] = name_to_config_map[agent_name]
                 yield result_object

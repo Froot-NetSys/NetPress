@@ -39,7 +39,6 @@ class BenchmarkEvaluator:
 
         G = self.graph_data
         
-        start_time = time.time()
         if llm_answer is None:
             # Provide a useful error structure that's consistent with existing handling
             ret = {'type': 'error', 'data': 'No LLM response provided and no local LLM agent available.'}
@@ -50,8 +49,6 @@ class BenchmarkEvaluator:
             except Exception:
                 ret = {'type': "error", 'data': traceback.format_exc()}
         
-        query_run_latency = time.time() - start_time
-
         # if the type of ret is string, turn it into a json object
         if isinstance(ret, str):
             try:
@@ -108,7 +105,7 @@ class BenchmarkEvaluator:
 
         print("=========Current query process is done!=========")
 
-        return ret, ground_truth_ret, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency, ret_graph_copy
+        return ret, ground_truth_ret, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, ret_graph_copy
 
     def ground_truth_check(self, requestData, task_label, ret, ground_truth_ret, ret_graph_copy, verifier_results, verifier_error, gt_verifier_results, gt_verifier_error, query_run_latency):
         # Helper function to log results and avoid code duplication
