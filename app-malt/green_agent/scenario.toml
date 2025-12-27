@@ -6,7 +6,6 @@ role = "network_operator"
 endpoint = "http://127.0.0.1:8000"
 
 [config]
-llm_model_type = "AzureGPT4Agent" 
 prompt_type = "zeroshot_base" 
 num_queries = 1 
 complexity_level = ["level1", "level2"]
