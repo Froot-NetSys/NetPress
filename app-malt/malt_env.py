@@ -39,13 +39,25 @@ class BenchmarkEvaluator:
 
         G = self.graph_data
         
+        # Shared namespace for exec/eval with all required dependencies
+        exec_namespace = {
+            'G': G, 'copy': copy, 'nx': nx, 'json': json,
+            # Include all solid_step helper functions
+            'solid_step_add_node_to_graph': solid_step_add_node_to_graph,
+            'solid_step_counting_query': solid_step_counting_query,
+            'solid_step_remove_node_from_graph': solid_step_remove_node_from_graph,
+            'solid_step_list_child_nodes': solid_step_list_child_nodes,
+            'solid_step_update_node_value': solid_step_update_node_value,
+            'solid_step_rank_child_nodes': solid_step_rank_child_nodes,
+        }
+        
         if llm_answer is None:
             # Provide a useful error structure that's consistent with existing handling
             ret = {'type': 'error', 'data': 'No LLM response provided and no local LLM agent available.'}
         else:
             try:
-                exec(llm_answer)
-                ret = eval("process_graph(copy.deepcopy(G))")
+                exec(llm_answer, exec_namespace)
+                ret = eval("process_graph(copy.deepcopy(G))", exec_namespace)
             except Exception:
                 ret = {'type': "error", 'data': traceback.format_exc()}
         
@@ -80,8 +92,10 @@ class BenchmarkEvaluator:
         goldenAnswerCode = golden_answer
 
         # ground truth answer should already be checked to ensure it can run successfully
-        exec(goldenAnswerCode)
-        ground_truth_ret = eval("ground_truth_process_graph(copy.deepcopy(G))")
+        # Use a fresh copy of the namespace to avoid pollution from LLM code
+        gt_namespace = dict(exec_namespace)
+        exec(goldenAnswerCode, gt_namespace)
+        ground_truth_ret = eval("ground_truth_process_graph(copy.deepcopy(G))", gt_namespace)
         # if the type of ground_truth_ret is string, turn it into a json object
         if isinstance(ground_truth_ret, str):
             ground_truth_ret = json.loads(ground_truth_ret)
