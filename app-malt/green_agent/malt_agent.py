@@ -10,6 +10,7 @@ file_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.abspath(os.path.dirname(file_dir)))
 
 from pydantic import BaseModel, HttpUrl, ValidationError
+from cattrs import structure
 
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
@@ -32,7 +33,6 @@ from a2a.utils.errors import ServerError
 
 from main import evaluate_on_queries, MaltConfig
 from netarena.agent_client import AgentClientConfig, PromptType
-from cattrs import structure
 
 
 class EvalRequest(BaseModel):
@@ -43,25 +43,38 @@ class EvalRequest(BaseModel):
 class MaltEvalAgent:
 
     async def run_eval(self, request: EvalRequest, updater: TaskUpdater) -> None:
-        config = structure(request.config, MaltConfig)
+        config: MaltConfig = structure(request.config, MaltConfig)
+
+        # Only one agent allowed to be evaluated at a time.
+        role, url = next(iter(request.participants.items())) 
+        agent_config = AgentClientConfig(base_url=str(url), name=role, prompt_type=config.prompt_type)
+        config.agent_client_configs = [agent_config]
+
         # TODO: Support multiple agent evals at once?
         query_eval_results = evaluate_on_queries(config)
 
         # Each agent (name) mapped to a unique artifact containing all its evaluation results.
-        artifact_ids = {}
-        query_number = 0
-        append = False
-        async for res in query_eval_results:
-            query_number += 1
+        artifact_id = None
 
+        avg_correct = 0
+        avg_latency = 0
+        avg_safety = 0
+        n = 0
+        async for res in query_eval_results:
+            append = True
+            n += 1
+
+            # TODO: Accessing hardcoded keys.
             agent_name = res['agent_info']['name']
 
+            avg_correct += ((1 if res["Result-Correctness"] == "Pass" else 0) - avg_correct) / n
+            avg_safety += ((1 if res["Result-Safety"] == "Pass" else 0) - avg_safety) / n
+            avg_latency += (res["Result-Latency"] - avg_latency) / n
+
             # Can only append once the artifact is already created (set to False to create it first).
-            append = True
-            if agent_name not in artifact_ids:
-                artifact_ids[agent_name] = str(uuid.uuid4())
+            if artifact_id is None:
+                artifact_id = str(uuid.uuid4())
                 append = False
-            artifact_id = artifact_ids[agent_name]
 
             part = DataPart(data=res)
             logger.info(part)
@@ -70,7 +83,21 @@ class MaltEvalAgent:
                 artifact_id=artifact_id,
                 append=append
             )
-            await updater.update_status(TaskState.working, new_agent_text_message(f'Query {query_number} processed by agent: "{agent_name}"'))
+            await updater.update_status(TaskState.working, new_agent_text_message(f'Query {n} processed by agent: "{agent_name}"'))
+
+        # Final evaluation results.
+        query_res = {
+            'correctness': avg_correct,
+            'safety': avg_safety,
+            'latency_s': avg_latency
+        }
+        part = DataPart(data=query_res)
+        logger.info(part)
+        await updater.add_artifact(
+            parts=[part],
+            artifact_id=artifact_id,
+            append=append
+        )
 
     def validate_request(self, request: EvalRequest) -> tuple[bool, str]:
         ok = True
@@ -138,6 +165,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Expose the NetArena benchmark as an A2A server.")
     parser.add_argument('--host', type=str, default='127.0.0.1', help='Host to expose the server on.')
     parser.add_argument('--port', type=int, default=9999, help='Port to expose the server on.')
+    parser.add_argument('--card-url', type=str, default=None, help='Port to expose the server on.')
     args = parser.parse_args()
     return args
 
@@ -151,10 +179,11 @@ if __name__ == "__main__":
         tags=['llm', 'chatbot', 'litellm', 'text']
     )
 
+    agent_url = args.card_url or f"http://{args.host}:{args.port}/"
     public_agent_card = AgentCard(
         name='NetArena MALT Evaluation Agent',
         description='An LLM chatbot powered by Azure and LiteLLM.',
-        url=f'http://localhost:{args.port}/',
+        url=agent_url,
         version='1.0.0',
         default_input_modes=['data'],
         default_output_modes=['data'],

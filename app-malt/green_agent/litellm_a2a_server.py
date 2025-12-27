@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import uvicorn
 import litellm
 from loguru import logger
-from litellm import completion
+from litellm import acompletion
 from litellm import ModelResponse, CustomStreamWrapper, ModelResponseStream, StreamingChoices, Choices
 
 from a2a.server.apps import A2AStarletteApplication
@@ -34,9 +34,9 @@ class LitellmAgent:
         self.api_base_url = api_base_url
         self.api_version = api_version
 
-    def invoke(self, input_text: str) -> str:
+    async def invoke(self, input_text: str) -> str:
         messages = [{"role": "user", "content": input_text}]
-        response = completion(
+        response = await acompletion(
             self.model_name, messages, 
             stream=True, 
             base_url=self.api_base_url, 
@@ -44,7 +44,7 @@ class LitellmAgent:
             api_key=self.api_key
         )
         if isinstance(response, CustomStreamWrapper):
-            chunks = [chunk for chunk in response]
+            chunks = [chunk async for chunk in response]
             response = litellm.stream_chunk_builder(chunks, messages=messages)
         # Extract text content from aggregated output.
         if isinstance(response, ModelResponseStream):
@@ -65,7 +65,7 @@ class LitellmAgentExecutor(AgentExecutor):
         event_queue: EventQueue,
     ) -> None:
         input = context.get_user_input()
-        result = self.agent.invoke(input)
+        result = await self.agent.invoke(input)
         logger.info(f'Result: {result}')
         
         await event_queue.enqueue_event(new_agent_text_message(result))
