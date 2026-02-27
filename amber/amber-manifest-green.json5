@@ -1,0 +1,55 @@
+{
+  manifest_version: "0.1.0",
+  program: {
+    image: "ghcr.io/froot-netsys/malt_agent:latest",
+    entrypoint: [
+      "uv",
+      "run",
+      "malt_agent.py",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "8081"
+    ],
+    env: {
+      PROXY_URL: "${slots.proxy.url}",
+      LOG_LEVEL: "INFO",
+    },
+    network: {
+      endpoints: [
+        { name: "endpoint", port: 8081 },
+      ],
+    },
+  },
+  config_schema: {
+    type: "object",
+    properties: {
+    },
+    required: [],
+    additionalProperties: false,
+  },
+  slots: {
+    proxy: { kind: "a2a" },
+  },
+  provides: {
+    a2a: { kind: "a2a", endpoint: "endpoint" },
+  },
+  exports: {
+    a2a: "a2a",
+  },
+  metadata: {
+    assessment_config: {
+      prompt_type: "zeroshot_base",
+      num_queries: 2,
+      max_iterations: 10,
+      output_dir: "dump",
+      benchmark_path: "assessment_error_config.json",
+      regenerate_benchmark: true,
+      num_switches: 2,
+      num_hosts_per_subnet: 1
+    },
+    participant_roles: [
+      "route_operator"
+    ]
+  }
+}
