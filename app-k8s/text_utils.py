@@ -23,14 +23,14 @@ How the interaction works:
 - Use this information to identify and fix misconfigurations step-by-step.
 
 **Response format:**
-Put the command **directly** between triple backticks.
+Put the command **directly** between triple backticks following markdown syntax.
 You should use `kubectl patch` instead of `kubectl edit networkpolicy`.
 When using `kubectl patch`, use the `--type=json` to avoid overwriting existing rules. Do not rely on implicit merge behavior defaults.
 You should not include bash in the command, and you should not use <namespace> you should use the namespace of the service.
 
 Important notes:
 - You are not allowed to see the logs of the pods and Kubernetes events.
-- You are not allowed to use 'kubectl exec'.
+- You are not allowed to use the following commands: `kubectl exec`, `kubectl create`, `kubectl apply`, `kubectl delete`, `kubectl edit`, `kubectl describe`, `bash`, `sudo`.
 - Your new command should not change the existing correct network policies if not necessary; Please maintain the originally correct connectivity status.
 """
 
@@ -152,7 +152,7 @@ def extract_command(text: str) -> str:
     Returns:
         str: The content between the triple backticks with newline characters removed. If no match is found, returns an empty string.
     """
-    match = re.search(r'```(.*?)```', text, re.DOTALL)
+    match = re.search(r'```(?:(?:bash|sh|shell)\n)?(.*?)```', text, re.DOTALL)
     if match:
         return match.group(1).strip()
     return ""
