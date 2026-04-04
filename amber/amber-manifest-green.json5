@@ -40,16 +40,15 @@
   metadata: {
     assessment_config: {
       prompt_type: "zeroshot_base",
-      num_queries: 2,
-      max_iterations: 10,
+      num_queries: 3,
+      complexity_level: ["level1", "level2", "level3"],
       output_dir: "dump",
-      benchmark_path: "assessment_error_config.json",
-      regenerate_benchmark: true,
-      num_switches: 2,
-      num_hosts_per_subnet: 1
+      output_file: "query_output.jsonl",
+      benchmark_path: "assessment_queries.jsonl",
+      regenerate_benchmark: true
     },
     participant_roles: [
-      "route_operator"
+      "malt_operator"
     ]
   }
 }
